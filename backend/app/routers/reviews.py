@@ -55,6 +55,9 @@ async def approve_submission(
     writer.create_tag(f"{submission.plugin.name}-v{submission.plugin.version}")
     writer.commit_changes(f"approve: {submission.plugin.name} approved by {reviewer_email}")
 
+    # Push to remote repository
+    writer.push_to_remote()
+
     return {"status": "approved", "plugin_name": submission.plugin.name}
 
 

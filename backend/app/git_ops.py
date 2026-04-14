@@ -201,10 +201,10 @@ class GitRepoWriter:
         claude_plugin_dir = plugin_dir / ".claude-plugin"
         claude_plugin_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write plugin.json
+        # Write plugin.json (exclude null values to avoid schema validation errors)
         self._write_json(
             claude_plugin_dir / "plugin.json",
-            submission.plugin.model_dump()
+            submission.plugin.model_dump(exclude_none=True)
         )
 
         # Write versions.json (initial version)
@@ -308,3 +308,24 @@ class GitRepoWriter:
     def create_tag(self, tag_name: str) -> bool:
         """Create a git tag."""
         return self._run_git("tag", tag_name)
+
+    def push_to_remote(self) -> bool:
+        """Push commits and tags to remote repository."""
+        # Check if remote exists
+        result = subprocess.run(
+            ["git", "remote"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True
+        )
+        if "origin" not in result.stdout:
+            return False  # No remote configured
+
+        # Push commits
+        push_ok = self._run_git("push", "origin", "master")
+        if not push_ok:
+            return False
+
+        # Push all tags
+        tags_ok = self._run_git("push", "origin", "--tags")
+        return tags_ok
