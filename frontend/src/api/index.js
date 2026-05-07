@@ -33,6 +33,21 @@ export const submitPlugin = (data) => {
   return api.post('/plugins/submit', data)
 }
 
+export const submitPluginUpload = (formData) => {
+  return api.post('/plugins/submit/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
+  })
+}
+
+export const submitPluginGit = (data) => {
+  return api.post('/plugins/submit/git-sync', data)
+}
+
+export const getSubmissionFiles = (submissionId) => {
+  return api.get(`/plugins/submissions/${submissionId}/files`)
+}
+
 export const ratePlugin = (name, data) => {
   return api.post(`/plugins/${name}/rate`, data)
 }

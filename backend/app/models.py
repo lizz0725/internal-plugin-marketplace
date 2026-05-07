@@ -1,13 +1,13 @@
 """Pydantic data models for the plugin marketplace."""
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, EmailStr
 
 
 class Author(BaseModel):
     """Plugin author information."""
     name: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
 
 
 class PluginMetadata(BaseModel):
@@ -75,6 +75,7 @@ class Submission(BaseModel):
     submitter: SubmitterInfo
     review_status: ReviewStatus
     auto_check_results: Optional[dict] = None
+    submission_type: Optional[SubmissionTypeInfo] = None
 
 
 class Rating(BaseModel):
@@ -104,7 +105,23 @@ class PluginSubmit(BaseModel):
     """Request body for submitting a new plugin."""
     plugin: PluginMetadata
     submitter: SubmitterInfo
-    files: Optional[dict] = None  # 文件内容或路径
+
+
+class SubmissionTypeInfo(BaseModel):
+    """Information about how a submission was created and its source."""
+    method: Literal["manual", "upload", "git-sync"]
+    source_url: Optional[str] = None
+    source_ref: Optional[str] = None
+    file_count: int = 0
+    total_size_bytes: int = 0
+
+
+class PluginSubmitGit(BaseModel):
+    """Request body for submitting a plugin via Git URL."""
+    submitter: SubmitterInfo
+    git_url: str = Field(..., description="URL of the Git repository")
+    git_ref: str = Field("main", description="Branch, tag, or commit SHA")
+    git_token: Optional[str] = Field(None, description="Access token for private repos")
 
 
 class MarketplaceMeta(BaseModel):

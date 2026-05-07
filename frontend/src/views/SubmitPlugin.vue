@@ -1,92 +1,106 @@
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { submitPlugin } from '../api'
+import { submitPlugin, submitPluginUpload, submitPluginGit } from '../api'
 import { useAppStore } from '../stores'
+import SubmitFormTab from './SubmitFormTab.vue'
+import SubmitUploadTab from './SubmitUploadTab.vue'
+import SubmitGitSyncTab from './SubmitGitSyncTab.vue'
 
 const router = useRouter()
 const store = useAppStore()
 
-const form = reactive({
-  // Plugin info
-  pluginName: '',
-  pluginDescription: '',
-  pluginVersion: '',
-  pluginKeywords: '',
-  pluginHomepage: '',
-  // Submitter info
-  submitterName: store.userName || '',
-  submitterEmail: store.userEmail || '',
-  submitterDepartment: '',
-  submitterMessage: ''
-})
-
+const activeTab = ref('form')
 const loading = ref(false)
 const submitted = ref(false)
 const submissionId = ref('')
 const error = ref(null)
+const uploadProgress = ref(0)
 
-// Form validation
-const isValid = computed(() => {
-  return form.pluginName &&
-    form.pluginDescription &&
-    form.pluginVersion &&
-    /^[0-9]+\.[0-9]+\.[0-9]+$/.test(form.pluginVersion) &&
-    form.submitterName &&
-    form.submitterEmail
+// Shared submitter info
+const submitter = reactive({
+  name: store.userName || '',
+  email: store.userEmail || '',
+  department: '',
+  message: ''
 })
 
-const versionError = computed(() => {
-  if (!form.pluginVersion) return ''
-  if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(form.pluginVersion)) {
-    return '版本号格式应为 X.Y.Z (如 1.0.0)'
-  }
-  return ''
+// Form tab model (plugin fields only, submitter is managed separately)
+const formModel = reactive({
+  pluginName: '',
+  pluginDescription: '',
+  pluginVersion: '',
+  pluginKeywords: '',
+  pluginHomepage: ''
 })
 
-// Keywords parsing
-const parseKeywords = (str) => {
-  return str.split(',')
-    .map(k => k.trim())
-    .filter(k => k.length > 0)
+const isSubmitterValid = () => {
+  return submitter.name && submitter.email
 }
 
-// Submit
-const handleSubmit = async () => {
-  if (!isValid.value || loading.value) return
-
+const handleFormSubmit = async (pluginData) => {
+  if (!isSubmitterValid() || loading.value) return
   loading.value = true
   error.value = null
-
   try {
     const payload = {
       plugin: {
-        name: form.pluginName,
-        description: form.pluginDescription,
-        version: form.pluginVersion,
+        name: pluginData.plugin.name,
+        description: pluginData.plugin.description,
+        version: pluginData.plugin.version,
         author: {
-          name: form.submitterName,
-          email: form.submitterEmail
+          name: submitter.name,
+          email: submitter.email
         },
-        keywords: parseKeywords(form.pluginKeywords),
-        homepage: form.pluginHomepage || null,
+        keywords: pluginData.plugin.keywords,
+        homepage: pluginData.plugin.homepage || null,
         license: 'proprietary'
       },
       submitter: {
-        name: form.submitterName,
-        email: form.submitterEmail,
-        department: form.submitterDepartment || null,
+        name: submitter.name,
+        email: submitter.email,
+        department: submitter.department || null,
         submitted_at: new Date().toISOString(),
-        message: form.submitterMessage || null
+        message: submitter.message || null
       }
     }
-
     const response = await submitPlugin(payload)
     submissionId.value = response.data.submission_id
     submitted.value = true
   } catch (err) {
     error.value = err.response?.data?.detail || '提交失败，请稍后重试'
-    console.error(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleUploadSubmit = async (formData) => {
+  if (!isSubmitterValid() || loading.value) return
+  loading.value = true
+  error.value = null
+  uploadProgress.value = 1
+  try {
+    const response = await submitPluginUpload(formData)
+    submissionId.value = response.data.submission_id
+    submitted.value = true
+  } catch (err) {
+    error.value = err.response?.data?.detail || '上传提交失败，请稍后重试'
+  } finally {
+    loading.value = false
+    uploadProgress.value = 0
+  }
+}
+
+const handleGitSubmit = async (payload) => {
+  if (!isSubmitterValid() || loading.value) return
+  loading.value = true
+  error.value = null
+  try {
+    const response = await submitPluginGit(payload)
+    submissionId.value = response.data.submission_id
+    submitted.value = true
+  } catch (err) {
+    error.value = err.response?.data?.detail || 'Git 同步提交失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -95,12 +109,14 @@ const handleSubmit = async () => {
 const resetForm = () => {
   submitted.value = false
   submissionId.value = ''
-  form.pluginName = ''
-  form.pluginDescription = ''
-  form.pluginVersion = ''
-  form.pluginKeywords = ''
-  form.pluginHomepage = ''
-  form.submitterMessage = ''
+  error.value = null
+  formModel.pluginName = ''
+  formModel.pluginDescription = ''
+  formModel.pluginVersion = ''
+  formModel.pluginKeywords = ''
+  formModel.pluginHomepage = ''
+  submitter.department = ''
+  submitter.message = ''
 }
 </script>
 
@@ -109,7 +125,10 @@ const resetForm = () => {
     <!-- Header -->
     <header class="page-header">
       <h1 class="title">
-        <span class="title-icon">✨</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
         提交插件
       </h1>
       <p class="subtitle">提交你的插件到企业内部市场，等待管理员审核</p>
@@ -118,7 +137,10 @@ const resetForm = () => {
     <!-- Success state -->
     <div class="success-state" v-if="submitted">
       <div class="success-card">
-        <span class="success-icon">🎉</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="success-icon">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
         <h2>提交成功！</h2>
         <p class="submission-id">
           提交编号: <code>{{ submissionId }}</code>
@@ -137,263 +159,369 @@ const resetForm = () => {
 
     <!-- Form -->
     <div class="form-container" v-if="!submitted">
-      <form @submit.prevent="handleSubmit" class="submit-form">
-        <!-- Plugin section -->
-        <div class="form-section">
-          <h2 class="section-title">插件信息</h2>
+      <!-- Method tabs -->
+      <div class="method-tabs">
+        <button
+          :class="['tab', { active: activeTab === 'form' }]"
+          @click="activeTab = 'form'"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+          手动填写
+        </button>
+        <button
+          :class="['tab', { active: activeTab === 'upload' }]"
+          @click="activeTab = 'upload'"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          上传压缩包
+        </button>
+        <button
+          :class="['tab', { active: activeTab === 'git' }]"
+          @click="activeTab = 'git'"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+            <line x1="6" y1="9" x2="6" y2="21" />
+          </svg>
+          Git 同步
+        </button>
+      </div>
 
+      <!-- Shared submitter section -->
+      <div class="shared-section">
+        <h2 class="form-section-title">提交者信息</h2>
+        <div class="form-row">
           <div class="form-group">
-            <label for="pluginName">插件名称 *</label>
-            <input
-              id="pluginName"
-              v-model="form.pluginName"
-              placeholder="例如: nl2sql"
-              required
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="pluginDescription">插件描述 *</label>
-            <textarea
-              id="pluginDescription"
-              v-model="form.pluginDescription"
-              placeholder="简要描述插件功能..."
-              rows="3"
-              required
-            ></textarea>
-          </div>
-
-          <div class="form-group">
-            <label for="pluginVersion">版本号 *</label>
-            <input
-              id="pluginVersion"
-              v-model="form.pluginVersion"
-              placeholder="例如: 1.0.0"
-              :class="{ error: versionError }"
-              required
-            />
-            <span class="field-error" v-if="versionError">{{ versionError }}</span>
-          </div>
-
-          <div class="form-group">
-            <label for="pluginKeywords">关键词 (逗号分隔)</label>
-            <input
-              id="pluginKeywords"
-              v-model="form.pluginKeywords"
-              placeholder="例如: database, sql, automation"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="pluginHomepage">项目主页 (可选)</label>
-            <input
-              id="pluginHomepage"
-              v-model="form.pluginHomepage"
-              type="url"
-              placeholder="https://gitlab.company.com/..."
-            />
-          </div>
-        </div>
-
-        <!-- Submitter section -->
-        <div class="form-section">
-          <h2 class="section-title">提交者信息</h2>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="submitterName">姓名 *</label>
+            <label for="submitterName">姓名 *</label>
+            <div class="input-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="input-icon">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
               <input
                 id="submitterName"
-                v-model="form.submitterName"
+                v-model="submitter.name"
                 required
               />
             </div>
-            <div class="form-group">
-              <label for="submitterEmail">邮箱 *</label>
+          </div>
+          <div class="form-group">
+            <label for="submitterEmail">邮箱 *</label>
+            <div class="input-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="input-icon">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
+              </svg>
               <input
                 id="submitterEmail"
-                v-model="form.submitterEmail"
+                v-model="submitter.email"
                 type="email"
                 required
               />
             </div>
           </div>
-
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label for="submitterDepartment">部门</label>
-            <input
-              id="submitterDepartment"
-              v-model="form.submitterDepartment"
-              placeholder="例如: 数据平台团队"
-            />
+            <div class="input-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="input-icon">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              <input
+                id="submitterDepartment"
+                v-model="submitter.department"
+                placeholder="例如: 数据平台团队"
+              />
+            </div>
           </div>
-
           <div class="form-group">
             <label for="submitterMessage">备注信息</label>
-            <textarea
-              id="submitterMessage"
-              v-model="form.submitterMessage"
-              placeholder="向审核人员说明的额外信息..."
-              rows="2"
-            ></textarea>
+            <div class="input-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="input-icon">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <input
+                id="submitterMessage"
+                v-model="submitter.message"
+                placeholder="向审核人员说明的额外信息..."
+              />
+            </div>
           </div>
         </div>
+      </div>
 
-        <!-- Error -->
-        <div class="form-error" v-if="error">
-          <span class="error-icon">⚠️</span>
-          {{ error }}
-        </div>
+      <!-- Tab content: Manual form -->
+      <SubmitFormTab
+        v-if="activeTab === 'form'"
+        v-model="formModel"
+        :disabled="loading"
+        @submit="handleFormSubmit"
+      />
 
-        <!-- Submit button -->
-        <div class="form-actions">
-          <button
-            type="submit"
-            class="btn btn-primary submit-btn"
-            :disabled="!isValid || loading"
-          >
-            <span v-if="loading">提交中...</span>
-            <span v-else>提交审核</span>
-          </button>
-        </div>
-      </form>
+      <!-- Tab content: Upload zip -->
+      <SubmitUploadTab
+        v-else-if="activeTab === 'upload'"
+        :submitter-info="submitter"
+        :upload-progress="uploadProgress"
+        :disabled="loading"
+        @submit="handleUploadSubmit"
+      />
+
+      <!-- Tab content: Git sync -->
+      <SubmitGitSyncTab
+        v-else-if="activeTab === 'git'"
+        :submitter-info="submitter"
+        :disabled="loading"
+        @submit="handleGitSubmit"
+      />
+
+      <!-- Shared error -->
+      <div class="form-error" v-if="error">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" class="error-icon">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        {{ error }}
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .submit-page {
-  max-width: 600px;
+  max-width: 640px;
 }
 
 .page-header {
-  margin-bottom: var(--space-xl);
+  margin-bottom: var(--space-8);
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 24px;
+  font-weight: 600;
   color: var(--color-text);
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .title-icon {
-  font-size: 28px;
+  width: 24px;
+  height: 24px;
+  color: var(--color-primary);
 }
 
 .subtitle {
-  font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 14px;
   color: var(--color-text-muted);
-  margin-top: var(--space-xs);
 }
 
+/* Success */
 .success-state {
-  padding: var(--space-xl);
+  padding: var(--space-8) 0;
 }
 
 .success-card {
   background: var(--color-card);
-  border: 1px solid var(--color-success);
-  border-radius: var(--radius-lg);
-  padding: var(--space-xl);
+  border: 1px solid var(--color-success-muted);
+  border-radius: var(--radius-xl);
+  padding: var(--space-10);
   text-align: center;
 }
 
 .success-icon {
-  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  color: var(--color-success);
+  margin-bottom: var(--space-4);
 }
 
 .success-card h2 {
   font-family: var(--font-display);
+  font-size: 20px;
   color: var(--color-success);
-  margin: var(--space-md) 0;
+  margin-bottom: var(--space-3);
+}
+
+.submission-id {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
 }
 
 .submission-id code {
   font-family: var(--font-display);
   background: var(--color-bg);
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-radius: var(--radius-sm);
+  color: var(--color-primary);
 }
 
 .success-message {
+  font-size: 14px;
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-6);
 }
 
 .success-actions {
   display: flex;
-  gap: var(--space-md);
+  gap: var(--space-3);
   justify-content: center;
 }
 
+/* Form container */
 .form-container {
   background: var(--color-card);
   border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+}
+
+/* Method tabs */
+.method-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-6);
+  background: var(--color-bg);
   border-radius: var(--radius-lg);
-  padding: var(--space-xl);
+  padding: 3px;
 }
 
-.form-section {
-  margin-bottom: var(--space-xl);
-}
-
-.section-title {
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tab:hover {
+  color: var(--color-text-secondary);
+}
+
+.tab.active {
+  background: var(--color-card);
   color: var(--color-primary);
-  margin-bottom: var(--space-md);
-  padding-bottom: var(--space-sm);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Shared section */
+.shared-section {
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-6);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.form-group {
-  margin-bottom: var(--space-md);
+.form-section-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-4);
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-md);
+  gap: var(--space-4);
+  margin-bottom: 0;
 }
 
-input.error,
-textarea.error {
-  border-color: var(--color-error);
+.form-group {
+  margin-bottom: var(--space-3);
 }
 
-.field-error {
-  font-size: 12px;
-  color: var(--color-error);
-  margin-top: var(--space-xs);
+label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-1);
 }
 
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-muted);
+}
+
+.input-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.input-wrapper input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-text);
+  padding: 0;
+}
+
+.input-wrapper input::placeholder {
+  color: var(--color-text-dim);
+}
+
+/* Error */
 .form-error {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-2);
   color: var(--color-error);
-  background: rgba(212, 95, 95, 0.1);
-  padding: var(--space-md);
+  background: var(--color-error-muted);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
-  margin-bottom: var(--space-lg);
+  margin-top: var(--space-6);
+  font-size: 14px;
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.submit-btn {
-  min-width: 120px;
-}
-
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.form-error .error-icon {
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {

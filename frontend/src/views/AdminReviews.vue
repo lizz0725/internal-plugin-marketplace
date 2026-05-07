@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { getPendingReviews, approveSubmission, rejectSubmission } from '../api'
+import { getPendingReviews, approveSubmission, rejectSubmission, getSubmissionFiles } from '../api'
 import { useAppStore } from '../stores'
 import StatusBadge from '../components/StatusBadge.vue'
 
@@ -9,21 +9,32 @@ const store = useAppStore()
 const submissions = ref([])
 const loading = ref(true)
 const error = ref(null)
-const filter = ref('pending') // pending, all
+const filter = ref('all') // pending, approved, rejected, all
 
 const filteredSubmissions = computed(() => {
-  if (filter.value === 'pending') {
-    return submissions.value.filter(s => s.review_status?.status === 'pending')
-  }
-  return submissions.value
+  if (filter.value === 'all') return submissions.value
+  return submissions.value.filter(s => s.review_status?.status === filter.value)
 })
+
+const counts = computed(() => ({
+  all: submissions.value.length,
+  pending: submissions.value.filter(s => s.review_status?.status === 'pending').length,
+  approved: submissions.value.filter(s => s.review_status?.status === 'approved').length,
+  rejected: submissions.value.filter(s => s.review_status?.status === 'rejected').length
+}))
 
 // Review modal state
 const showReviewModal = ref(false)
 const selectedSubmission = ref(null)
-const reviewAction = ref('') // approve or reject
+const reviewAction = ref('')
 const reviewNotes = ref('')
 const reviewLoading = ref(false)
+
+// File viewer state
+const showFileViewer = ref(false)
+const fileViewerSubmission = ref(null)
+const fileViewerData = ref(null)
+const fileViewerLoading = ref(false)
 
 const fetchSubmissions = async () => {
   loading.value = true
@@ -49,6 +60,27 @@ const openReviewModal = (submission, action) => {
 const closeReviewModal = () => {
   showReviewModal.value = false
   selectedSubmission.value = null
+}
+
+const openFileViewer = async (submission) => {
+  fileViewerSubmission.value = submission
+  fileViewerData.value = null
+  showFileViewer.value = true
+  fileViewerLoading.value = true
+  try {
+    const response = await getSubmissionFiles(submission.submission_id)
+    fileViewerData.value = response.data
+  } catch (err) {
+    console.error('Failed to load files:', err)
+  } finally {
+    fileViewerLoading.value = false
+  }
+}
+
+const closeFileViewer = () => {
+  showFileViewer.value = false
+  fileViewerSubmission.value = null
+  fileViewerData.value = null
 }
 
 const submitReview = async () => {
@@ -91,6 +123,17 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 
+const typeLabel = (method) => {
+  const labels = { manual: '手动', upload: '上传', 'git-sync': 'Git同步' }
+  return labels[method] || method || '手动'
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 onMounted(fetchSubmissions)
 </script>
 
@@ -99,28 +142,55 @@ onMounted(fetchSubmissions)
     <!-- Header -->
     <header class="page-header">
       <h1 class="title">
-        <span class="title-icon">⚖️</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
         审核管理
       </h1>
-      <p class="subtitle">审核待提交的插件</p>
+      <p class="subtitle">审查和审批开发者提交的插件</p>
     </header>
 
-    <!-- Filters -->
-    <div class="filters-bar">
+    <!-- Filter chips -->
+    <div class="filter-chips">
       <button
-        :class="['filter-btn', { active: filter === 'pending' }]"
-        @click="filter = 'pending'"
-      >
-        待审核
-        <span class="count-badge" v-if="filteredSubmissions.length">
-          {{ submissions.filter(s => s.review_status?.status === 'pending').length }}
-        </span>
-      </button>
-      <button
-        :class="['filter-btn', { active: filter === 'all' }]"
+        :class="['filter-chip', { active: filter === 'all' }]"
         @click="filter = 'all'"
       >
         全部
+        <span class="chip-count">{{ counts.all }}</span>
+      </button>
+      <button
+        :class="['filter-chip', { active: filter === 'pending' }]"
+        @click="filter = 'pending'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        待审核
+        <span class="chip-count pending">{{ counts.pending }}</span>
+      </button>
+      <button
+        :class="['filter-chip', { active: filter === 'approved' }]"
+        @click="filter = 'approved'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        已批准
+        <span class="chip-count approved">{{ counts.approved }}</span>
+      </button>
+      <button
+        :class="['filter-chip', { active: filter === 'rejected' }]"
+        @click="filter = 'rejected'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+        已拒绝
+        <span class="chip-count rejected">{{ counts.rejected }}</span>
       </button>
     </div>
 
@@ -130,89 +200,106 @@ onMounted(fetchSubmissions)
     </div>
 
     <!-- Error -->
-    <div class="error-state" v-if="error">
-      <span class="error-icon">⚠️</span>
+    <div class="state-card error-state" v-if="error">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="state-icon">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
       <p>{{ error }}</p>
       <button class="btn btn-secondary" @click="fetchSubmissions">重新加载</button>
     </div>
 
     <!-- Empty -->
-    <div class="empty-state" v-if="!loading && !error && filteredSubmissions.length === 0">
-      <span class="empty-icon">✓</span>
-      <h2>{{ filter === 'pending' ? '没有待审核的提交' : '没有提交记录' }}</h2>
+    <div class="state-card empty-state" v-if="!loading && !error && filteredSubmissions.length === 0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="state-icon">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      <h2 v-if="filter === 'pending'">没有待审核的提交</h2>
+      <h2 v-else>没有提交记录</h2>
     </div>
 
-    <!-- Submissions list -->
-    <div class="submissions-list" v-if="!loading && !error && filteredSubmissions.length > 0">
+    <!-- Submissions table -->
+    <div class="submissions-table" v-if="!loading && !error && filteredSubmissions.length > 0">
+      <!-- Table header -->
+      <div class="table-header">
+        <span class="col-name">插件名称</span>
+        <span class="col-author">作者</span>
+        <span class="col-version">版本</span>
+        <span class="col-type">提交方式</span>
+        <span class="col-date">提交时间</span>
+        <span class="col-status">状态</span>
+        <span class="col-actions">操作</span>
+      </div>
+
+      <!-- Table rows -->
       <div
         v-for="submission in filteredSubmissions"
         :key="submission.submission_id"
-        class="submission-card"
+        class="table-row"
       >
-        <!-- Card header -->
-        <div class="card-header">
-          <div class="header-left">
-            <h3 class="plugin-name">{{ submission.plugin?.name }}</h3>
-            <span class="version-tag">v{{ submission.plugin?.version }}</span>
-            <StatusBadge :status="submission.review_status?.status" />
-          </div>
-          <span class="submission-id">{{ submission.submission_id }}</span>
-        </div>
-
-        <!-- Card body -->
-        <div class="card-body">
-          <p class="description">{{ submission.plugin?.description }}</p>
-
-          <div class="submitter-info">
-            <span class="submitter-name">{{ submission.submitter?.name }}</span>
-            <span class="submitter-email">{{ submission.submitter?.email }}</span>
-            <span class="submitter-dept" v-if="submission.submitter?.department">
-              {{ submission.submitter?.department }}
-            </span>
-          </div>
-
-          <div class="keywords" v-if="submission.plugin?.keywords?.length">
-            <span class="keyword" v-for="kw in submission.plugin.keywords" :key="kw">
-              {{ kw }}
-            </span>
-          </div>
-
-          <div class="submission-message" v-if="submission.submitter?.message">
-            <span class="message-label">提交备注:</span>
-            <p class="message-text">{{ submission.submitter.message }}</p>
-          </div>
-        </div>
-
-        <!-- Card footer -->
-        <div class="card-footer">
-          <span class="submitted-date">
-            提交于 {{ formatDate(submission.submitter?.submitted_at) }}
+        <span class="col-name">
+          <span class="plugin-name">{{ submission.plugin?.name }}</span>
+        </span>
+        <span class="col-author">
+          <span class="author-name">{{ submission.submitter?.name }}</span>
+        </span>
+        <span class="col-version">
+          <span class="version-text">v{{ submission.plugin?.version }}</span>
+        </span>
+        <span class="col-type">
+          <span :class="['type-badge', submission.submission_type?.method || 'manual']">
+            {{ typeLabel(submission.submission_type?.method) }}
           </span>
-
-          <!-- Action buttons (only for pending) -->
-          <div class="action-buttons" v-if="submission.review_status?.status === 'pending'">
+        </span>
+        <span class="col-date">
+          <span class="date-text">{{ formatDate(submission.submitter?.submitted_at) }}</span>
+        </span>
+        <span class="col-status">
+          <StatusBadge :status="submission.review_status?.status" size="sm" />
+        </span>
+        <span class="col-actions">
+          <button
+            v-if="submission.submission_type?.method && submission.submission_type.method !== 'manual'"
+            class="btn btn-outline btn-sm"
+            @click="openFileViewer(submission)"
+            title="查看文件"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            文件
+          </button>
+          <template v-if="submission.review_status?.status === 'pending'">
             <button
-              class="btn btn-success approve-btn"
+              class="btn btn-success btn-sm"
               @click="openReviewModal(submission, 'approve')"
             >
-              ✓ 通过
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              批准
             </button>
             <button
-              class="btn btn-error reject-btn"
+              class="btn btn-error btn-sm"
               @click="openReviewModal(submission, 'reject')"
             >
-              ✕ 拒绝
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              拒绝
             </button>
-          </div>
-
-          <!-- Review info (for processed) -->
-          <div class="review-info" v-if="submission.review_status?.status !== 'pending'">
-            <span class="reviewer">
-              {{ submission.review_status?.reviewed_by }} 审核于
-              {{ formatDate(submission.review_status?.reviewed_at) }}
+          </template>
+          <template v-else>
+            <span class="review-info-text" v-if="submission.review_status?.review_notes">
+              {{ submission.review_status.review_notes }}
             </span>
-          </div>
-        </div>
+          </template>
+        </span>
       </div>
     </div>
 
@@ -221,15 +308,19 @@ onMounted(fetchSubmissions)
       <div class="modal-content">
         <div class="modal-header">
           <h2>{{ reviewAction === 'approve' ? '通过审核' : '拒绝提交' }}</h2>
-          <button class="modal-close" @click="closeReviewModal">✕</button>
+          <button class="modal-close" @click="closeReviewModal" aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
 
         <div class="modal-body">
-          <p class="modal-plugin-name">
-            {{ selectedSubmission?.plugin?.name }}
-          </p>
+          <p class="modal-plugin-name">{{ selectedSubmission?.plugin?.name }}</p>
+          <p class="modal-version">v{{ selectedSubmission?.plugin?.version }}</p>
 
-          <div class="form-group">
+          <div class="modal-form-group">
             <label>
               {{ reviewAction === 'approve' ? '审核备注 (可选)' : '拒绝原因 *' }}
             </label>
@@ -242,9 +333,7 @@ onMounted(fetchSubmissions)
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeReviewModal">
-            取消
-          </button>
+          <button class="btn btn-secondary" @click="closeReviewModal">取消</button>
           <button
             :class="['btn', reviewAction === 'approve' ? 'btn-success' : 'btn-error']"
             @click="submitReview"
@@ -255,81 +344,148 @@ onMounted(fetchSubmissions)
         </div>
       </div>
     </div>
+
+    <!-- File Viewer Modal -->
+    <div class="modal-overlay" v-if="showFileViewer" @click.self="closeFileViewer">
+      <div class="modal-content modal-wide">
+        <div class="modal-header">
+          <h2>插件文件 - {{ fileViewerSubmission?.plugin?.name }}</h2>
+          <button class="modal-close" @click="closeFileViewer" aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="file-viewer-meta" v-if="fileViewerData?.submission_type">
+            提交方式: {{ typeLabel(fileViewerData.submission_type.method) }}
+            <template v-if="fileViewerData.submission_type.source_url">
+              · 来源: {{ fileViewerData.submission_type.source_url }}
+            </template>
+            <template v-if="fileViewerData.submission_type.file_count">
+              · {{ fileViewerData.submission_type.file_count }} 个文件
+            </template>
+          </p>
+
+          <div class="file-tree" v-if="fileViewerLoading">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">加载文件列表...</p>
+          </div>
+
+          <div class="file-tree" v-else-if="fileViewerData?.files">
+            <div
+              v-for="file in fileViewerData.files"
+              :key="file.path"
+              class="file-tree-item"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-tree-icon">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <span class="file-tree-path">{{ file.path }}</span>
+              <span class="file-tree-size">{{ formatFileSize(file.size) }}</span>
+            </div>
+          </div>
+
+          <div class="file-tree" v-else>
+            <p class="no-files">无文件</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeFileViewer">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .admin-reviews-page {
-  max-width: 900px;
+  max-width: 1000px;
 }
 
 .page-header {
-  margin-bottom: var(--space-xl);
+  margin-bottom: var(--space-6);
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 24px;
+  font-weight: 600;
   color: var(--color-text);
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .title-icon {
-  font-size: 28px;
-}
-
-.subtitle {
-  font-family: var(--font-body);
-  font-size: 16px;
-  color: var(--color-text-muted);
-  margin-top: var(--space-xs);
-}
-
-.filters-bar {
-  display: flex;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-lg);
-}
-
-.filter-btn {
-  background: var(--color-card);
-  border: 1px solid var(--color-border-subtle);
-  color: var(--color-text-secondary);
-  font-family: var(--font-display);
-  font-size: 14px;
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.filter-btn.active {
-  border-color: var(--color-primary);
+  width: 24px;
+  height: 24px;
   color: var(--color-primary);
 }
 
-.count-badge {
-  background: var(--color-warning);
-  color: var(--color-bg);
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
+.subtitle {
+  font-size: 14px;
+  color: var(--color-text-muted);
 }
 
+/* Filter chips */
+.filter-chips {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-chip:hover {
+  border-color: var(--color-text-dim);
+  color: var(--color-text);
+}
+
+.filter-chip.active {
+  background: var(--color-primary-muted);
+  border-color: var(--color-border-active);
+  color: var(--color-primary);
+}
+
+.chip-count {
+  font-family: var(--font-display);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.chip-count.pending { color: var(--color-warning); }
+.chip-count.approved { color: var(--color-success); }
+.chip-count.rejected { color: var(--color-error); }
+
+/* States */
 .loading-state {
   display: flex;
   justify-content: center;
-  padding: var(--space-xl);
+  padding: var(--space-12);
 }
 
 .loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--color-border);
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--color-border);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -339,154 +495,185 @@ onMounted(fetchSubmissions)
   to { transform: rotate(360deg); }
 }
 
-.error-state,
-.empty-state {
+.state-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--space-xl);
+  padding: var(--space-12);
   text-align: center;
+  background: var(--color-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
 }
 
-.error-icon,
-.empty-icon {
-  font-size: 48px;
+.state-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-4);
 }
 
-.empty-state h2 {
+.state-card h2 {
   font-family: var(--font-display);
+  font-size: 18px;
   color: var(--color-text);
+  margin-bottom: var(--space-2);
 }
 
-.submissions-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-lg);
+.state-card p {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-5);
 }
 
-.submission-card {
+/* Table */
+.submissions-table {
   background: var(--color-card);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
-  padding: var(--space-lg);
+  overflow: hidden;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--space-md);
+.table-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 0.8fr 0.8fr 1fr 0.8fr 1.2fr;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.header-left {
-  display: flex;
+.table-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 0.8fr 0.8fr 1fr 0.8fr 1.2fr;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border-subtle);
   align-items: center;
-  gap: var(--space-md);
+  transition: background var(--transition-fast);
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.table-row:hover {
+  background: var(--color-card-hover);
 }
 
 .plugin-name {
   font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--color-text);
-}
-
-.version-tag {
-  font-family: var(--font-display);
-  font-size: 12px;
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-}
-
-.submission-id {
-  font-family: var(--font-display);
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.card-body {
-  margin-bottom: var(--space-md);
-}
-
-.description {
-  font-family: var(--font-body);
-  color: var(--color-text-secondary);
-  margin-bottom: var(--space-md);
-}
-
-.submitter-info {
-  display: flex;
-  gap: var(--space-md);
   font-size: 13px;
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-sm);
-}
-
-.submitter-name {
+  font-weight: 500;
   color: var(--color-text);
 }
 
-.keywords {
-  display: flex;
-  gap: var(--space-xs);
-  margin-bottom: var(--space-md);
+.author-name {
+  font-size: 12px;
+  color: var(--color-text-dim);
 }
 
-.keyword {
+.version-text {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.date-text {
+  font-size: 12px;
+  color: var(--color-text-dim);
+}
+
+.col-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.review-info-text {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  font-style: italic;
+}
+
+/* Type badges */
+.type-badge {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.type-badge.manual {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.type-badge.upload {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border-active);
+}
+
+.type-badge.git-sync {
+  background: rgba(99, 102, 241, 0.1);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* Button sizes */
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   font-family: var(--font-display);
   font-size: 11px;
-  color: var(--color-text-muted);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-subtle);
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-}
-
-.submission-message {
-  background: var(--color-bg);
-  padding: var(--space-md);
+  font-weight: 500;
   border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  height: 28px;
+  white-space: nowrap;
 }
 
-.message-label {
-  font-family: var(--font-display);
-  font-size: 12px;
-  color: var(--color-text-muted);
+.btn-success {
+  background: var(--color-success);
+  color: #1A1A1F;
+  border-color: var(--color-success);
+}
+.btn-success:hover {
+  filter: brightness(1.1);
 }
 
-.message-text {
-  font-size: 14px;
+.btn-outline {
+  background: transparent;
   color: var(--color-text-secondary);
-  margin-top: var(--space-xs);
+  border-color: var(--color-border);
+}
+.btn-outline:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.btn-error {
+  background: var(--color-error);
+  color: #fff;
+  border-color: var(--color-error);
 }
-
-.submitted-date {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.action-buttons {
-  display: flex;
-  gap: var(--space-sm);
-}
-
-.approve-btn,
-.reject-btn {
-  font-family: var(--font-display);
-  font-size: 13px;
-  padding: 6px 16px;
-}
-
-.review-info {
-  font-size: 13px;
-  color: var(--color-text-muted);
+.btn-error:hover {
+  filter: brightness(1.1);
 }
 
 /* Modal */
@@ -504,46 +691,157 @@ onMounted(fetchSubmissions)
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  max-width: 400px;
+  max-width: 420px;
   width: 100%;
-  padding: var(--space-xl);
+  padding: var(--space-6);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-5);
 }
 
 .modal-header h2 {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 16px;
   color: var(--color-text);
 }
 
 .modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: var(--color-text-muted);
-  font-size: 18px;
   cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+  color: var(--color-text);
+  background: var(--color-card-hover);
 }
 
 .modal-body {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-6);
 }
 
 .modal-plugin-name {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 18px;
   color: var(--color-primary);
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-1);
+}
+
+.modal-version {
+  font-size: 13px;
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-5);
+}
+
+.modal-form-group label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.modal-form-group textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-text);
+  resize: vertical;
+}
+
+.modal-form-group textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-md);
+  gap: var(--space-3);
+}
+
+/* Wide modal for file viewer */
+.modal-wide {
+  max-width: 600px;
+}
+
+.file-viewer-meta {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.file-tree {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.file-tree .loading-spinner {
+  margin: var(--space-6) auto;
+}
+
+.loading-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-4);
+}
+
+.file-tree-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-display);
+  transition: background var(--transition-fast);
+}
+
+.file-tree-item:hover {
+  background: var(--color-card-hover);
+}
+
+.file-tree-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.file-tree-path {
+  flex: 1;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.file-tree-size {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+.no-files {
+  text-align: center;
+  font-size: 14px;
+  color: var(--color-text-dim);
+  padding: var(--space-6);
 }
 </style>

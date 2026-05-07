@@ -27,5 +27,36 @@ class Settings(BaseSettings):
     # Admin emails (comma-separated)
     admin_emails: str = ""
 
+    # File upload limits
+    max_upload_size_mb: int = 50
+    max_extracted_files: int = 500
+    max_extracted_size_mb: int = 200
+
+    # Git sync limits
+    git_clone_timeout_seconds: int = 60
+    max_clone_size_mb: int = 200
+
+    # Git proxy for cloning (auto-detected from environment if not set)
+    # Example: http://127.0.0.1:7890
+    git_proxy: str = ""
+
+    @property
+    def effective_git_proxy(self) -> str:
+        """Return git proxy, falling back to common env vars."""
+        if self.git_proxy:
+            return self.git_proxy
+        return (
+            os.environ.get("HTTPS_PROXY")
+            or os.environ.get("https_proxy")
+            or os.environ.get("HTTP_PROXY")
+            or os.environ.get("http_proxy")
+            or os.environ.get("ALL_PROXY")
+            or os.environ.get("all_proxy")
+            or ""
+        )
+
+    # Temp directory for processing
+    temp_processing_dir: str = "/tmp/plugin-marketplace"
+
 
 settings = Settings()

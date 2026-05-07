@@ -10,7 +10,7 @@ from app.config import settings
 from app.models import (
     PluginMetadata, Plugin, MarketplaceMeta,
     Versions, VersionInfo, PluginRatings, Rating,
-    Submission, SubmitterInfo, ReviewStatus
+    Submission, SubmitterInfo, ReviewStatus, SubmissionTypeInfo
 )
 
 
@@ -180,6 +180,42 @@ class GitRepoWriter:
 
         return True
 
+    def create_file_based_submission(
+        self,
+        submission_id: str,
+        plugin: PluginMetadata,
+        submitter: SubmitterInfo,
+        source_dir: Path,
+        submission_type: SubmissionTypeInfo,
+    ) -> bool:
+        """Create a submission with uploaded/synced plugin files."""
+        submission_dir = self.repo_path / "pending" / "submissions" / submission_id
+        submission_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write metadata files
+        self._write_json(
+            submission_dir / "plugin.json",
+            plugin.model_dump()
+        )
+        self._write_json(
+            submission_dir / "submitter.json",
+            submitter.model_dump()
+        )
+        self._write_json(
+            submission_dir / "review_status.json",
+            {"submission_id": submission_id, "status": "pending"}
+        )
+        self._write_json(
+            submission_dir / "submission_type.json",
+            submission_type.model_dump()
+        )
+
+        # Copy plugin files
+        files_dir = submission_dir / "files"
+        shutil.copytree(source_dir, files_dir, dirs_exist_ok=True)
+
+        return True
+
     def approve_submission(self, submission_id: str, reviewer_email: str, notes: str) -> bool:
         """Approve a submission and move it to plugins."""
         submission_dir = self.repo_path / "pending" / "submissions" / submission_id
@@ -192,20 +228,26 @@ class GitRepoWriter:
         if not submission:
             return False
 
-        # Create plugin directory
+        # Check if this is a file-based submission
+        type_file = submission_dir / "submission_type.json"
+        is_file_based = type_file.exists()
+
         plugin_name = submission.plugin.name
         plugin_dir = self.repo_path / "plugins" / plugin_name
-        plugin_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create .claude-plugin directory
         claude_plugin_dir = plugin_dir / ".claude-plugin"
         claude_plugin_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write plugin.json (exclude null values to avoid schema validation errors)
-        self._write_json(
-            claude_plugin_dir / "plugin.json",
-            submission.plugin.model_dump(exclude_none=True)
-        )
+        if is_file_based:
+            # Copy files from submission to plugin directory
+            src_files = submission_dir / "files"
+            if src_files.exists():
+                shutil.copytree(src_files, plugin_dir, dirs_exist_ok=True)
+        else:
+            # Write plugin.json from form data (existing behavior)
+            self._write_json(
+                claude_plugin_dir / "plugin.json",
+                submission.plugin.model_dump(exclude_none=True)
+            )
 
         # Write versions.json (initial version)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
