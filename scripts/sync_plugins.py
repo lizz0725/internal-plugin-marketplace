@@ -502,13 +502,18 @@ def main():
     sources_data["last_updated"] = now
     save_sources(sources_data)
 
-    # Commit and push
+    # Commit and push (unless --no-push)
     if updated > 0 or args.init:
         if args.init:
             msg = f"sync: initial import of plugins ({now[:10]})"
         else:
             msg = f"sync: updated {updated} plugins, {unchanged} unchanged, {failed} failed ({now[:10]})"
-        commit_and_push(msg)
+        if args.no_push:
+            log("  --no-push: skipping commit and push")
+            # Still stage changes so user can inspect
+            run_git(["add", "-A"])
+        else:
+            commit_and_push(msg)
     else:
         log("No changes to commit")
 
