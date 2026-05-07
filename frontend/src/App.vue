@@ -18,24 +18,14 @@ const navItems = [
     label: '插件浏览',
     icon: ['polygon', { points: '13 2 3 14 12 14 11 22 21 10 12 10 13 2' }]
   },
-  {
-    path: '/submit',
-    label: '提交插件',
-    icon: ['path', { d: 'M12 20h9' }, ['path', { d: 'M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z' }]]
-  },
-  {
-    path: '/my-submissions',
-    label: '我的提交',
-    icon: ['path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }, ['polyline', { points: '14 2 14 8 20 8' }], ['line', { x1: 16, y1: 13, x2: 8, y2: 13 }], ['line', { x1: 16, y1: 17, x2: 8, y2: 17 }]]
-  },
 ]
 
 const adminNavItems = [
   {
-    path: '/admin/reviews',
-    label: '审核管理',
+    path: '/admin/sync',
+    label: '同步面板',
     icon: ['circle', { cx: 12, cy: 12, r: 10 }, ['polyline', { points: '12 6 12 12 16 14' }]],
-    badge: true
+    badge: false
   },
   {
     path: '/admin/stats',

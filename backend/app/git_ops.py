@@ -8,7 +8,8 @@ import subprocess
 
 from app.config import settings
 from app.models import (
-    PluginMetadata, Plugin, MarketplaceMeta,
+    PluginMetadata, Plugin, PluginWithSource,
+    MarketplaceMeta, SourceInfo,
     Versions, VersionInfo, PluginRatings, Rating,
     Submission, SubmitterInfo, ReviewStatus, SubmissionTypeInfo
 )
@@ -79,6 +80,40 @@ class GitRepoReader:
         """Get all plugins."""
         return [p for name in self.get_plugins_list()
                 if (p := self.get_plugin(name)) is not None]
+
+    def get_sources(self) -> Optional[dict]:
+        """Read sources.json for upstream tracking info."""
+        return self._read_json(self.repo_path / "sources.json")
+
+    def get_plugin_with_source(self, name: str) -> Optional[PluginWithSource]:
+        """Get plugin info with source tracking."""
+        plugin = self.get_plugin(name)
+        if not plugin:
+            return None
+
+        sources = self.get_sources()
+        source_info = None
+        stars = 0
+        homepage = None
+        tags = []
+
+        if sources:
+            for entry in sources.get("plugins", []):
+                if entry["name"] == name:
+                    src = entry.get("source", {})
+                    source_info = SourceInfo(**src) if src else None
+                    stars = entry.get("stars", 0)
+                    homepage = entry.get("homepage")
+                    tags = entry.get("tags", [])
+                    break
+
+        return PluginWithSource(
+            **plugin.model_dump(),
+            source=source_info,
+            stars=stars,
+            homepage=homepage,
+            tags=tags
+        )
 
     def get_ratings(self, plugin_name: str) -> Optional[PluginRatings]:
         """Get ratings for a plugin."""
@@ -351,9 +386,27 @@ class GitRepoWriter:
         """Create a git tag."""
         return self._run_git("tag", tag_name)
 
-    def push_to_remote(self) -> bool:
-        """Push commits and tags to remote repository."""
-        # Check if remote exists
+    def push_to_remote(self, remotes: Optional[List[dict]] = None) -> bool:
+        """Push commits and tags to remote(s).
+
+        Args:
+            remotes: List of remote configs from sources.json.
+                     Falls back to 'origin' if not provided.
+        """
+        if remotes:
+            ok = True
+            for remote in remotes:
+                name = remote.get("name", "origin")
+                url = remote.get("url", "")
+                branch = remote.get("push_branch", "master")
+                if url:
+                    self._run_git("remote", "add", name, url)
+                    self._run_git("remote", "set-url", name, url)
+                ok &= self._run_git("push", name, branch)
+                self._run_git("push", name, "--tags")
+            return ok
+
+        # Fallback to single 'origin'
         result = subprocess.run(
             ["git", "remote"],
             cwd=self.repo_path,
@@ -361,13 +414,9 @@ class GitRepoWriter:
             text=True
         )
         if "origin" not in result.stdout:
-            return False  # No remote configured
-
-        # Push commits
+            return False
         push_ok = self._run_git("push", "origin", "master")
         if not push_ok:
             return False
-
-        # Push all tags
         tags_ok = self._run_git("push", "origin", "--tags")
         return tags_ok

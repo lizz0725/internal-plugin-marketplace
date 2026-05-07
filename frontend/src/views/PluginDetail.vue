@@ -21,7 +21,7 @@ const ratingSubmitted = ref(false)
 const ratingLoading = ref(false)
 
 const installCommand = computed(() => {
-  return `/plugin install ${pluginName.value}@internal`
+  return `/plugin install ${pluginName.value}@cc-plugin-marketplace`
 })
 
 const copyInstall = () => {
@@ -297,6 +297,38 @@ onMounted(fetchPlugin)
             </div>
           </div>
 
+          <!-- Upstream Source -->
+          <div class="sidebar-card" v-if="plugin.source && plugin.source.type !== 'manual'">
+            <h3 class="sidebar-card-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              上游来源
+            </h3>
+            <div class="info-list">
+              <div class="info-row" v-if="plugin.stars">
+                <span class="info-label">Stars</span>
+                <span class="info-value stars-value">★ {{ (plugin.stars / 1000).toFixed(1) }}k</span>
+              </div>
+              <div class="info-row" v-if="plugin.source.last_sync_at">
+                <span class="info-label">同步时间</span>
+                <span class="info-value">{{ plugin.source.last_sync_at.slice(0, 10) }}</span>
+              </div>
+              <div class="info-row" v-if="plugin.source.commit_sha">
+                <span class="info-label">Commit</span>
+                <span class="info-value mono">{{ plugin.source.commit_sha.slice(0, 12) }}</span>
+              </div>
+              <div class="info-row" v-if="plugin.source.last_sync_status">
+                <span class="info-label">状态</span>
+                <span :class="['info-value', 'status-' + plugin.source.last_sync_status]">
+                  {{ plugin.source.last_sync_status }}
+                </span>
+              </div>
+            </div>
+          </div>
+
           <!-- Homepage -->
           <div class="sidebar-card" v-if="plugin.homepage">
             <h3 class="sidebar-card-title">
@@ -308,7 +340,7 @@ onMounted(fetchPlugin)
               链接
             </h3>
             <a :href="plugin.homepage" target="_blank" class="homepage-link">
-              查看项目主页
+              查看上游仓库
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
@@ -745,6 +777,27 @@ onMounted(fetchPlugin)
   gap: var(--space-1);
   font-size: 13px;
   color: var(--color-primary);
+}
+
+.stars-value {
+  color: var(--color-primary) !important;
+}
+
+.mono {
+  font-family: var(--font-display) !important;
+  font-size: 11px !important;
+}
+
+.status-success {
+  color: var(--color-success) !important;
+}
+
+.status-failed {
+  color: var(--color-error) !important;
+}
+
+.status-pending {
+  color: var(--color-warning) !important;
 }
 
 @media (max-width: 768px) {

@@ -133,3 +133,37 @@ class MarketplaceMeta(BaseModel):
     repository: Optional[str] = None
     created_at: str
     plugins_count: int = 0
+
+
+# ──────────────────────────────────────────
+# New models for upstream aggregation marketplace
+# ──────────────────────────────────────────
+
+class SourceInfo(BaseModel):
+    """Upstream source tracking for a plugin."""
+    type: Literal["manual", "github_single", "github_monorepo"]
+    repo_url: Optional[str] = None
+    repo_ref: Optional[str] = None
+    commit_sha: Optional[str] = None
+    subdir: Optional[str] = None
+    version: Optional[str] = None
+    last_sync_at: Optional[str] = None
+    last_sync_status: Optional[str] = None  # pending, success, failed, unchanged
+
+
+class SyncStatus(BaseModel):
+    """Sync status for all plugins."""
+    last_updated: Optional[str] = None
+    total_plugins: int = 0
+    synced: int = 0
+    pending: int = 0
+    failed: int = 0
+    plugins: List[dict] = []
+
+
+class PluginWithSource(Plugin):
+    """Plugin info with source tracking."""
+    source: Optional[SourceInfo] = None
+    stars: int = 0
+    homepage: Optional[str] = None
+    tags: List[str] = []

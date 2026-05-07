@@ -18,22 +18,10 @@ const routes = [
     meta: { title: '插件详情' }
   },
   {
-    path: '/submit',
-    name: 'SubmitPlugin',
-    component: () => import('../views/SubmitPlugin.vue'),
-    meta: { title: '提交插件' }
-  },
-  {
-    path: '/my-submissions',
-    name: 'MySubmissions',
-    component: () => import('../views/MySubmissions.vue'),
-    meta: { title: '我的提交' }
-  },
-  {
-    path: '/admin/reviews',
-    name: 'AdminReviews',
-    component: () => import('../views/AdminReviews.vue'),
-    meta: { title: '审核管理', admin: true }
+    path: '/admin/sync',
+    name: 'AdminSync',
+    component: () => import('../views/AdminSync.vue'),
+    meta: { title: '同步面板', admin: true }
   },
   {
     path: '/admin/stats',
