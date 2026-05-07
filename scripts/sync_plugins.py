@@ -101,6 +101,74 @@ def shallow_clone_ref(repo_url, ref, dest_dir):
         return False
 
 
+def shallow_clone_ref_sparse(repo_url, ref, dest_dir, sparse_paths=None):
+    """Clone with partial fetch + sparse checkout for large repos.
+
+    Uses git init + remote add + fetch --depth 1 --filter=blob:none + sparse-checkout
+    to minimize data transfer. Only the files under sparse_paths are checked out.
+    """
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Init empty repo
+        r = subprocess.run(
+            ["git", "init"], cwd=dest_dir, capture_output=True, text=True, timeout=30
+        )
+        if r.returncode != 0:
+            log(f"  git init failed: {r.stderr[:80]}")
+            return False
+
+        # Add remote
+        r = subprocess.run(
+            ["git", "remote", "add", "origin", repo_url],
+            cwd=dest_dir, capture_output=True, text=True, timeout=30
+        )
+        if r.returncode != 0:
+            log(f"  git remote add failed: {r.stderr[:80]}")
+            return False
+
+        # Fetch with blob:none filter and HTTP/1.1 to avoid HTTP2 framing errors
+        r = subprocess.run(
+            ["git", "-c", "http.version=HTTP/1.1", "fetch", "--depth", "1",
+             "--filter=blob:none", "origin", ref],
+            cwd=dest_dir, capture_output=True, text=True, timeout=300,
+        )
+        if r.returncode != 0:
+            log(f"  git fetch failed: {r.stderr[:120]}")
+            return False
+
+        # Sparse checkout to limit disk usage
+        if sparse_paths:
+            r = subprocess.run(
+                ["git", "sparse-checkout", "init", "--cone"],
+                cwd=dest_dir, capture_output=True, text=True, timeout=30
+            )
+            if r.returncode == 0:
+                r = subprocess.run(
+                    ["git", "sparse-checkout", "set"] + sparse_paths,
+                    cwd=dest_dir, capture_output=True, text=True, timeout=30
+                )
+
+        # Checkout
+        r = subprocess.run(
+            ["git", "checkout", "FETCH_HEAD"],
+            cwd=dest_dir, capture_output=True, text=True, timeout=120,
+        )
+        if r.returncode != 0:
+            log(f"  git checkout failed: {r.stderr[:80]}")
+            return False
+
+        return True
+    except subprocess.TimeoutExpired:
+        log("  sparse clone timed out")
+        return False
+    except FileNotFoundError:
+        log("  git not found")
+        return False
+
+
 def find_claude_plugin_dir(source_dir):
     """Find the .claude-plugin directory. Could be at root or one level deep."""
     candidates = [
@@ -192,9 +260,13 @@ def sync_plugin(entry, force=False) -> bool:
 
     log(f"  Updating: {current_sha[:12] if current_sha else 'none'} -> {new_sha[:12]}")
 
-    # Clone the repo
+    # Clone the repo (try regular shallow clone first, fall back to sparse)
     clone_dir = TEMP_DIR / f"{name}_{int(time.time())}"
-    if not shallow_clone_ref(repo_url, repo_ref, clone_dir):
+    cloned = shallow_clone_ref(repo_url, repo_ref, clone_dir)
+    if not cloned:
+        log(f"  Retrying with sparse checkout...")
+        cloned = shallow_clone_ref_sparse(repo_url, repo_ref, clone_dir, [".claude-plugin"])
+    if not cloned:
         source["last_sync_status"] = "failed"
         log(f"  FAILED: clone error")
         if clone_dir.exists():
