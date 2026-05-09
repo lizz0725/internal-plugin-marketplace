@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGINS_REPO = REPO_ROOT / "plugins-repo"
 SOURCES_FILE = PLUGINS_REPO / "sources.json"
 MARKETPLACE_FILE = PLUGINS_REPO / ".claude-plugin" / "marketplace.json"
-TEMP_DIR = Path("/tmp") / "plugin-marketplace-sync"
+TEMP_DIR = Path(os.environ.get("TMPDIR", "/tmp")) / "plugin-marketplace-sync"
 GIT_TIMEOUT = 120  # seconds
 MAX_RETRIES = 2
 
@@ -41,7 +41,7 @@ def run_git(args, cwd=None, timeout=GIT_TIMEOUT):
     """Run a git command and return (returncode, stdout, stderr)."""
     try:
         r = subprocess.run(
-            ["git"] + args,
+            ["git", "-c", "http.version=HTTP/1.1"] + args,
             cwd=cwd or str(PLUGINS_REPO),
             capture_output=True,
             text=True,
@@ -85,7 +85,7 @@ def shallow_clone_ref(repo_url, ref, dest_dir):
 
     try:
         r = subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", ref,
+            ["git", "-c", "http.version=HTTP/1.1", "clone", "--depth", "1", "--branch", ref,
              "--single-branch", "--", repo_url, str(dest_dir)],
             capture_output=True, text=True, timeout=300,
         )
@@ -101,12 +101,20 @@ def shallow_clone_ref(repo_url, ref, dest_dir):
         return False
 
 
-def shallow_clone_ref_sparse(repo_url, ref, dest_dir, sparse_paths=None):
+def shallow_clone_ref_sparse(repo_url, ref, dest_dir, initial_paths=None, expand_paths_fn=None):
     """Clone with partial fetch + sparse checkout for large repos.
 
+    Two-phase checkout:
+    Phase 1: sparse checkout only initial_paths (default: [".claude-plugin"])
+    Phase 2: if expand_paths_fn is provided, call it to get extra paths,
+             then expand sparse checkout and re-checkout.
+
     Uses git init + remote add + fetch --depth 1 --filter=blob:none + sparse-checkout
-    to minimize data transfer. Only the files under sparse_paths are checked out.
+    to minimize data transfer.
     """
+    if initial_paths is None:
+        initial_paths = [".claude-plugin"]
+
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -139,17 +147,16 @@ def shallow_clone_ref_sparse(repo_url, ref, dest_dir, sparse_paths=None):
             log(f"  git fetch failed: {r.stderr[:120]}")
             return False
 
-        # Sparse checkout to limit disk usage
-        if sparse_paths:
+        # Phase 1: Initial sparse checkout of metadata paths
+        r = subprocess.run(
+            ["git", "sparse-checkout", "init", "--cone"],
+            cwd=dest_dir, capture_output=True, text=True, timeout=30
+        )
+        if r.returncode == 0:
             r = subprocess.run(
-                ["git", "sparse-checkout", "init", "--cone"],
+                ["git", "sparse-checkout", "set"] + initial_paths,
                 cwd=dest_dir, capture_output=True, text=True, timeout=30
             )
-            if r.returncode == 0:
-                r = subprocess.run(
-                    ["git", "sparse-checkout", "set"] + sparse_paths,
-                    cwd=dest_dir, capture_output=True, text=True, timeout=30
-                )
 
         # Checkout
         r = subprocess.run(
@@ -159,6 +166,28 @@ def shallow_clone_ref_sparse(repo_url, ref, dest_dir, sparse_paths=None):
         if r.returncode != 0:
             log(f"  git checkout failed: {r.stderr[:80]}")
             return False
+
+        # Phase 2: Expand sparse checkout for content files if needed
+        if expand_paths_fn:
+            extra_paths = expand_paths_fn(dest_dir)
+            if extra_paths:
+                # Extract top-level directory names (cone mode requirement)
+                top_level = set()
+                for p in extra_paths:
+                    top = p.strip("./").split("/")[0]
+                    if top and top != ".":
+                        top_level.add(top)
+                if top_level:
+                    log(f"  Expanding sparse checkout: {', '.join(sorted(top_level))}")
+                    r = subprocess.run(
+                        ["git", "sparse-checkout", "add"] + sorted(top_level),
+                        cwd=dest_dir, capture_output=True, text=True, timeout=30
+                    )
+                    if r.returncode == 0:
+                        subprocess.run(
+                            ["git", "checkout", "FETCH_HEAD"],
+                            cwd=dest_dir, capture_output=True, text=True, timeout=120,
+                        )
 
         return True
     except subprocess.TimeoutExpired:
@@ -187,12 +216,125 @@ def find_claude_plugin_dir(source_dir):
     return None
 
 
-def copy_plugin(source_plugin_dir, target_plugin_dir):
-    """Copy .claude-plugin/ to target, preserving structure."""
-    if target_plugin_dir.exists():
-        shutil.rmtree(target_plugin_dir)
-    target_plugin_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source_plugin_dir, target_plugin_dir)
+def _is_safe_relative_path(path, source_root):
+    """Reject URLs, absolute paths, path traversal, empty paths."""
+    path = (path or "").strip()
+    if not path:
+        return False
+    if path.startswith(("http://", "https://", "/", "file://")):
+        return False
+    try:
+        resolved = (source_root / path).resolve()
+        resolved.relative_to(source_root.resolve())
+    except (ValueError, RuntimeError):
+        return False  # path traversal outside source_root
+    return True
+
+
+def _extract_content_paths(plugin_meta, source_content_root):
+    """Extract all content file paths from plugin.json.
+
+    Includes:
+    - Explicitly declared skills and commands paths
+    - Convention-based directories (hooks, agents, rules) if they exist on disk
+    - .mcp.json if present at source root
+    """
+    paths = set()
+
+    for key in ("skills", "commands"):
+        val = plugin_meta.get(key, [])
+        if isinstance(val, str):  # defensive: handle malformed single string
+            val = [val]
+        for p in (val or []):
+            p = p.strip().rstrip("/")
+            if _is_safe_relative_path(p, source_content_root):
+                paths.add(p)
+
+    # Convention-based directories (auto-discovered by Claude Code v2.1+)
+    for dirname in ("hooks", "agents", "rules"):
+        if (source_content_root / dirname).is_dir():
+            paths.add(dirname)
+
+    # .mcp.json at plugin root (auto-discovered by convention)
+    if (source_content_root / ".mcp.json").is_file():
+        paths.add(".mcp.json")
+
+    return sorted(paths)
+
+
+def copy_content_files(source_content_root, target_content_root, content_paths):
+    """Copy content files from source to target.
+
+    Returns list of successfully copied paths.
+    """
+    copied = []
+    ignore = shutil.ignore_patterns('.git', 'node_modules', '__pycache__', '.DS_Store')
+
+    for rel_path in content_paths:
+        src = source_content_root / rel_path
+        if not src.exists():
+            log(f"  WARNING: content path '{rel_path}' not found in source, skipping")
+            continue
+
+        dst = target_content_root / rel_path
+        # Remove existing to handle renamed/removed files in updates
+        if dst.exists():
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            else:
+                dst.unlink()
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+
+        if src.is_dir():
+            shutil.copytree(src, dst, ignore=ignore, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
+
+        copied.append(rel_path)
+
+    return copied
+
+
+def copy_plugin(source_plugin_dir, source_content_root, target_plugin_root):
+    """Copy .claude-plugin/ metadata AND content files to target.
+
+    Args:
+        source_plugin_dir: path to upstream .claude-plugin/ directory
+        source_content_root: path to directory containing .claude-plugin/ (upstream plugin root)
+        target_plugin_root: path to plugins/<name>/ (marketplace plugin root)
+    """
+    target_metadata_dir = target_plugin_root / ".claude-plugin"
+
+    # 1. Copy metadata (.claude-plugin/) -- existing behavior
+    if target_metadata_dir.exists():
+        shutil.rmtree(target_metadata_dir)
+    target_metadata_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_plugin_dir, target_metadata_dir)
+
+    # 2. Read plugin metadata to determine content paths
+    plugin_json = source_plugin_dir / "plugin.json"
+    try:
+        with open(plugin_json) as f:
+            plugin_meta = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        log(f"  WARNING: cannot read plugin.json for content paths")
+        return True
+
+    # 3. Clean stale content from previous syncs
+    for item in list(target_plugin_root.iterdir()):
+        if item.name not in (".claude-plugin", "source.json"):
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+
+    # 4. Extract and copy content files
+    content_paths = _extract_content_paths(plugin_meta, source_content_root)
+    if content_paths:
+        copied = copy_content_files(source_content_root, target_plugin_root, content_paths)
+        log(f"  Copied {len(copied)} content paths: {', '.join(copied)}")
+
     return True
 
 
@@ -229,6 +371,40 @@ def generate_marketplace_json(sources_data) -> list:
     return plugins_list
 
 
+def _get_content_top_level_dirs(clone_dir, subdir=None):
+    """Read plugin.json from a sparse clone and return top-level content dirs.
+
+    Used as expand_paths_fn for two-phase sparse checkout.
+    Returns top-level directory names only (cone mode requirement).
+    """
+    if subdir:
+        source_dir = clone_dir / subdir
+    else:
+        source_dir = clone_dir
+
+    if not source_dir.exists():
+        return []
+
+    plugin_dir = find_claude_plugin_dir(source_dir)
+    if not plugin_dir:
+        return []
+
+    try:
+        with open(plugin_dir / "plugin.json") as f:
+            meta = json.load(f)
+    except Exception:
+        return []
+
+    paths = _extract_content_paths(meta, plugin_dir.parent)
+    # Return only top-level directory names for cone-mode sparse checkout
+    top_level = set()
+    for p in paths:
+        top = p.strip("./").split("/")[0]
+        if top and top != ".":
+            top_level.add(top)
+    return sorted(top_level)
+
+
 def sync_plugin(entry, force=False) -> bool:
     """Sync a single plugin from upstream. Returns True if updated."""
     source = entry.get("source", {})
@@ -260,12 +436,16 @@ def sync_plugin(entry, force=False) -> bool:
 
     log(f"  Updating: {current_sha[:12] if current_sha else 'none'} -> {new_sha[:12]}")
 
-    # Clone the repo (try regular shallow clone first, fall back to sparse)
+    # Clone the repo (try sparse checkout first, fall back to full shallow clone)
     clone_dir = TEMP_DIR / f"{name}_{int(time.time())}"
-    cloned = shallow_clone_ref(repo_url, repo_ref, clone_dir)
+    cloned = shallow_clone_ref_sparse(
+        repo_url, repo_ref, clone_dir,
+        initial_paths=[".claude-plugin"],
+        expand_paths_fn=lambda d: _get_content_top_level_dirs(d, subdir),
+    )
     if not cloned:
-        log(f"  Retrying with sparse checkout...")
-        cloned = shallow_clone_ref_sparse(repo_url, repo_ref, clone_dir, [".claude-plugin"])
+        log(f"  Retrying with full shallow clone...")
+        cloned = shallow_clone_ref(repo_url, repo_ref, clone_dir)
     if not cloned:
         source["last_sync_status"] = "failed"
         log(f"  FAILED: clone error")
@@ -292,11 +472,13 @@ def sync_plugin(entry, force=False) -> bool:
         shutil.rmtree(clone_dir)
         return False
 
-    # Copy to target
-    target_plugin_dir = PLUGINS_REPO / "plugins" / name / ".claude-plugin"
-    copy_plugin(plugin_dir, target_plugin_dir)
+    # Copy metadata AND content files to target
+    source_content_root = plugin_dir.parent
+    target_plugin_root = PLUGINS_REPO / "plugins" / name
+    copy_plugin(plugin_dir, source_content_root, target_plugin_root)
 
     # Write per-plugin source.json
+    target_plugin_dir = target_plugin_root / ".claude-plugin"
     write_source_file(target_plugin_dir, {
         "name": name,
         "source": {
