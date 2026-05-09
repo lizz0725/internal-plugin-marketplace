@@ -6,7 +6,7 @@ import shutil
 import json
 
 from app.git_ops import GitRepoReader, GitRepoWriter
-from app.models import PluginMetadata, Author, SubmitterInfo, ReviewStatus, Submission, Rating
+from app.models import PluginMetadata, Author, Rating
 
 
 @pytest.fixture
@@ -18,10 +18,7 @@ def temp_repo():
     # Create structure
     repo_path.mkdir()
     (repo_path / "plugins").mkdir()
-    (repo_path / "pending" / "submissions").mkdir(parents=True)
     (repo_path / "ratings").mkdir()
-    (repo_path / "reviews").mkdir()
-    (repo_path / "stats").mkdir()
 
     # Create marketplace.json
     marketplace = {
@@ -66,111 +63,31 @@ class TestGitRepoReader:
 
         assert plugins == []
 
-    def test_get_pending_submissions_empty(self, temp_repo):
-        """Test getting empty submissions list."""
+    def test_get_sources_none(self, temp_repo):
+        """Test get_sources returns None when no sources.json."""
         reader = GitRepoReader(temp_repo)
-        submissions = reader.get_pending_submissions()
-
-        assert submissions == []
+        sources = reader.get_sources()
+        assert sources is None
 
 
 class TestGitRepoWriter:
     """Tests for GitRepoWriter."""
 
-    def test_create_submission(self, temp_repo):
-        """Test creating a submission."""
-        writer = GitRepoWriter(temp_repo)
-
-        plugin = PluginMetadata(
-            name="test-plugin",
-            description="Test Description",
-            version="1.0.0",
-            author=Author(name="Test Author", email="author@test.com")
-        )
-        submitter = SubmitterInfo(
-            name="Submitter",
-            email="submitter@test.com",
-            submitted_at="2026-04-14T10:00:00Z",
-            message="Test submission"
-        )
-        review_status = ReviewStatus(submission_id="test-001")
-
-        submission = Submission(
-            submission_id="test-001",
-            plugin=plugin,
-            submitter=submitter,
-            review_status=review_status
-        )
-
-        result = writer.create_submission(submission)
-        assert result is True
-
-        # Verify files exist
-        submission_dir = temp_repo / "pending" / "submissions" / "test-001"
-        assert submission_dir.exists()
-        assert (submission_dir / "plugin.json").exists()
-        assert (submission_dir / "submitter.json").exists()
-
-    def test_approve_submission(self, temp_repo):
-        """Test approving a submission."""
-        writer = GitRepoWriter(temp_repo)
-
-        # First create a submission
-        plugin = PluginMetadata(
-            name="approved-plugin",
-            description="Approved Plugin",
-            version="1.0.0",
-            author=Author(name="Author", email="author@test.com")
-        )
-        submitter = SubmitterInfo(
-            name="Submitter",
-            email="submitter@test.com",
-            submitted_at="2026-04-14T10:00:00Z"
-        )
-        submission = Submission(
-            submission_id="approve-001",
-            plugin=plugin,
-            submitter=submitter,
-            review_status=ReviewStatus(submission_id="approve-001")
-        )
-        writer.create_submission(submission)
-
-        # Approve it
-        result = writer.approve_submission(
-            "approve-001",
-            "admin@test.com",
-            "Looks good"
-        )
-        assert result is True
-
-        # Verify plugin created
-        plugin_dir = temp_repo / "plugins" / "approved-plugin"
-        assert plugin_dir.exists()
-
     def test_add_rating(self, temp_repo):
         """Test adding a rating."""
-        # First create a plugin
         writer = GitRepoWriter(temp_repo)
 
-        plugin = PluginMetadata(
-            name="rated-plugin",
-            description="Rated Plugin",
-            version="1.0.0",
-            author=Author(name="Author", email="author@test.com")
-        )
-        submitter = SubmitterInfo(
-            name="Submitter",
-            email="submitter@test.com",
-            submitted_at="2026-04-14T10:00:00Z"
-        )
-        submission = Submission(
-            submission_id="rate-001",
-            plugin=plugin,
-            submitter=submitter,
-            review_status=ReviewStatus(submission_id="rate-001")
-        )
-        writer.create_submission(submission)
-        writer.approve_submission("rate-001", "admin@test.com", "ok")
+        # Manually create a plugin directory with plugin.json
+        plugin_dir = temp_repo / "plugins" / "rated-plugin" / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        plugin_json = {
+            "name": "rated-plugin",
+            "description": "Rated Plugin",
+            "version": "1.0.0",
+            "author": {"name": "Author", "email": "author@test.com"}
+        }
+        with open(plugin_dir / "plugin.json", "w") as f:
+            json.dump(plugin_json, f)
 
         # Add rating
         rating = Rating(

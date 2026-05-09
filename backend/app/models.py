@@ -50,34 +50,6 @@ class Plugin(BaseModel):
     versions: Optional[Versions] = None
 
 
-class SubmitterInfo(BaseModel):
-    """Plugin submission submitter information."""
-    name: str
-    email: EmailStr
-    department: Optional[str] = None
-    submitted_at: str
-    message: Optional[str] = None
-
-
-class ReviewStatus(BaseModel):
-    """Review status for a submission."""
-    submission_id: str
-    status: str = "pending"  # pending, approved, rejected
-    reviewed_by: Optional[EmailStr] = None
-    reviewed_at: Optional[str] = None
-    review_notes: Optional[str] = None
-
-
-class Submission(BaseModel):
-    """A plugin submission for review."""
-    submission_id: str
-    plugin: PluginMetadata
-    submitter: SubmitterInfo
-    review_status: ReviewStatus
-    auto_check_results: Optional[dict] = None
-    submission_type: Optional[SubmissionTypeInfo] = None
-
-
 class Rating(BaseModel):
     """User rating for a plugin."""
     user: EmailStr
@@ -101,29 +73,6 @@ class RatingSubmit(BaseModel):
     user_email: EmailStr
 
 
-class PluginSubmit(BaseModel):
-    """Request body for submitting a new plugin."""
-    plugin: PluginMetadata
-    submitter: SubmitterInfo
-
-
-class SubmissionTypeInfo(BaseModel):
-    """Information about how a submission was created and its source."""
-    method: Literal["manual", "upload", "git-sync"]
-    source_url: Optional[str] = None
-    source_ref: Optional[str] = None
-    file_count: int = 0
-    total_size_bytes: int = 0
-
-
-class PluginSubmitGit(BaseModel):
-    """Request body for submitting a plugin via Git URL."""
-    submitter: SubmitterInfo
-    git_url: str = Field(..., description="URL of the Git repository")
-    git_ref: str = Field("main", description="Branch, tag, or commit SHA")
-    git_token: Optional[str] = Field(None, description="Access token for private repos")
-
-
 class MarketplaceMeta(BaseModel):
     """Marketplace metadata."""
     name: str
@@ -136,7 +85,7 @@ class MarketplaceMeta(BaseModel):
 
 
 # ──────────────────────────────────────────
-# New models for upstream aggregation marketplace
+# Models for upstream aggregation marketplace
 # ──────────────────────────────────────────
 
 class SourceInfo(BaseModel):

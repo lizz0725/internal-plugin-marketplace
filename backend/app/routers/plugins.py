@@ -72,28 +72,3 @@ async def rate_plugin(name: str, rating: RatingSubmit):
     # Re-read to get updated average
     updated_ratings = GitRepoReader().get_ratings(name)
     return {"status": "success", "average_rating": updated_ratings.average_rating if updated_ratings else rating.rating}
-
-
-@router.post("/{name}/rate")
-async def rate_plugin(name: str, rating: RatingSubmit):
-    """Submit a rating for a plugin."""
-    reader = GitRepoReader()
-    plugin = reader.get_plugin(name)
-
-    if not plugin:
-        raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
-
-    rating_obj = Rating(
-        user=rating.user_email,
-        rating=rating.rating,
-        comment=rating.comment,
-        rated_at=datetime.now(timezone.utc).isoformat()
-    )
-
-    writer = GitRepoWriter()
-    writer.add_rating(name, rating_obj)
-    writer.commit_changes(f"rating: {rating.user_email} rated {name}")
-
-    # Re-read to get updated average
-    updated_ratings = GitRepoReader().get_ratings(name)
-    return {"status": "success", "average_rating": updated_ratings.average_rating if updated_ratings else rating.rating}

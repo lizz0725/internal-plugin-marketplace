@@ -1,8 +1,6 @@
 """Git repository operations for reading and writing plugin data."""
 import json
-import shutil
 from pathlib import Path
-from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 import subprocess
 
@@ -10,8 +8,7 @@ from app.config import settings
 from app.models import (
     PluginMetadata, Plugin, PluginWithSource,
     MarketplaceMeta, SourceInfo,
-    Versions, VersionInfo, PluginRatings, Rating,
-    Submission, SubmitterInfo, ReviewStatus, SubmissionTypeInfo
+    PluginRatings, Rating,
 )
 
 
@@ -122,52 +119,6 @@ class GitRepoReader:
             return PluginRatings(**data)
         return None
 
-    def get_pending_submissions(self) -> List[Submission]:
-        """Get all pending submissions."""
-        submissions_dir = self.repo_path / "pending" / "submissions"
-        if not submissions_dir.exists():
-            return []
-
-        submissions = []
-        for submission_dir in submissions_dir.iterdir():
-            if not submission_dir.is_dir():
-                continue
-
-            plugin_json = self._read_json(submission_dir / "plugin.json")
-            submitter_json = self._read_json(submission_dir / "submitter.json")
-            review_json = self._read_json(submission_dir / "review_status.json")
-
-            if plugin_json and submitter_json:
-                submission = Submission(
-                    submission_id=submission_dir.name,
-                    plugin=PluginMetadata(**plugin_json),
-                    submitter=SubmitterInfo(**submitter_json),
-                    review_status=ReviewStatus(**(review_json or {"submission_id": submission_dir.name}))
-                )
-                submissions.append(submission)
-
-        return submissions
-
-    def get_submission(self, submission_id: str) -> Optional[Submission]:
-        """Get a specific submission."""
-        submission_dir = self.repo_path / "pending" / "submissions" / submission_id
-        if not submission_dir.exists():
-            return None
-
-        plugin_json = self._read_json(submission_dir / "plugin.json")
-        submitter_json = self._read_json(submission_dir / "submitter.json")
-        review_json = self._read_json(submission_dir / "review_status.json")
-
-        if not plugin_json or not submitter_json:
-            return None
-
-        return Submission(
-            submission_id=submission_id,
-            plugin=PluginMetadata(**plugin_json),
-            submitter=SubmitterInfo(**submitter_json),
-            review_status=ReviewStatus(**(review_json or {"submission_id": submission_id}))
-        )
-
 
 class GitRepoWriter:
     """Write data to the Git plugin repository."""
@@ -193,154 +144,6 @@ class GitRepoWriter:
             return True
         except subprocess.CalledProcessError:
             return False
-
-    def create_submission(self, submission: Submission) -> bool:
-        """Create a new submission directory."""
-        submission_dir = self.repo_path / "pending" / "submissions" / submission.submission_id
-        submission_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write files
-        self._write_json(
-            submission_dir / "plugin.json",
-            submission.plugin.model_dump()
-        )
-        self._write_json(
-            submission_dir / "submitter.json",
-            submission.submitter.model_dump()
-        )
-        self._write_json(
-            submission_dir / "review_status.json",
-            submission.review_status.model_dump()
-        )
-
-        return True
-
-    def create_file_based_submission(
-        self,
-        submission_id: str,
-        plugin: PluginMetadata,
-        submitter: SubmitterInfo,
-        source_dir: Path,
-        submission_type: SubmissionTypeInfo,
-    ) -> bool:
-        """Create a submission with uploaded/synced plugin files."""
-        submission_dir = self.repo_path / "pending" / "submissions" / submission_id
-        submission_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write metadata files
-        self._write_json(
-            submission_dir / "plugin.json",
-            plugin.model_dump()
-        )
-        self._write_json(
-            submission_dir / "submitter.json",
-            submitter.model_dump()
-        )
-        self._write_json(
-            submission_dir / "review_status.json",
-            {"submission_id": submission_id, "status": "pending"}
-        )
-        self._write_json(
-            submission_dir / "submission_type.json",
-            submission_type.model_dump()
-        )
-
-        # Copy plugin files
-        files_dir = submission_dir / "files"
-        shutil.copytree(source_dir, files_dir, dirs_exist_ok=True)
-
-        return True
-
-    def approve_submission(self, submission_id: str, reviewer_email: str, notes: str) -> bool:
-        """Approve a submission and move it to plugins."""
-        submission_dir = self.repo_path / "pending" / "submissions" / submission_id
-        if not submission_dir.exists():
-            return False
-
-        # Read submission data
-        reader = GitRepoReader(self.repo_path)
-        submission = reader.get_submission(submission_id)
-        if not submission:
-            return False
-
-        # Check if this is a file-based submission
-        type_file = submission_dir / "submission_type.json"
-        is_file_based = type_file.exists()
-
-        plugin_name = submission.plugin.name
-        plugin_dir = self.repo_path / "plugins" / plugin_name
-        claude_plugin_dir = plugin_dir / ".claude-plugin"
-        claude_plugin_dir.mkdir(parents=True, exist_ok=True)
-
-        if is_file_based:
-            # Copy files from submission to plugin directory
-            src_files = submission_dir / "files"
-            if src_files.exists():
-                shutil.copytree(src_files, plugin_dir, dirs_exist_ok=True)
-        else:
-            # Write plugin.json from form data (existing behavior)
-            self._write_json(
-                claude_plugin_dir / "plugin.json",
-                submission.plugin.model_dump(exclude_none=True)
-            )
-
-        # Write versions.json (initial version)
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        version_tag = f"{plugin_name}-v{submission.plugin.version}"
-        versions = Versions(
-            current=submission.plugin.version,
-            versions=[
-                VersionInfo(
-                    version=submission.plugin.version,
-                    released_at=now,
-                    git_ref=version_tag,
-                    changelog="初始版本",
-                    status="current"
-                )
-            ]
-        )
-        self._write_json(claude_plugin_dir / "versions.json", versions.model_dump())
-
-        # Create initial ratings file
-        self._write_json(
-            self.repo_path / "ratings" / f"{plugin_name}.json",
-            {"plugin": plugin_name, "average_rating": 0.0, "total_ratings": 0, "ratings": []}
-        )
-
-        # Update review status
-        review_status = ReviewStatus(
-            submission_id=submission_id,
-            status="approved",
-            reviewed_by=reviewer_email,
-            reviewed_at=datetime.now(timezone.utc).isoformat(),
-            review_notes=notes
-        )
-        self._write_json(submission_dir / "review_status.json", review_status.model_dump())
-
-        # Update marketplace.json
-        meta = reader.get_marketplace_meta()
-        if meta:
-            meta.plugins_count = len(reader.get_plugins_list()) + 1
-            self._write_json(self.repo_path / "marketplace.json", meta.model_dump())
-
-        return True
-
-    def reject_submission(self, submission_id: str, reviewer_email: str, reason: str) -> bool:
-        """Reject a submission."""
-        submission_dir = self.repo_path / "pending" / "submissions" / submission_id
-        if not submission_dir.exists():
-            return False
-
-        review_status = ReviewStatus(
-            submission_id=submission_id,
-            status="rejected",
-            reviewed_by=reviewer_email,
-            reviewed_at=datetime.now(timezone.utc).isoformat(),
-            review_notes=reason
-        )
-        self._write_json(submission_dir / "review_status.json", review_status.model_dump())
-
-        return True
 
     def add_rating(self, plugin_name: str, rating: Rating) -> bool:
         """Add a rating to a plugin."""
@@ -386,37 +189,16 @@ class GitRepoWriter:
         """Create a git tag."""
         return self._run_git("tag", tag_name)
 
-    def push_to_remote(self, remotes: Optional[List[dict]] = None) -> bool:
-        """Push commits and tags to remote(s).
-
-        Args:
-            remotes: List of remote configs from sources.json.
-                     Falls back to 'origin' if not provided.
-        """
-        if remotes:
-            ok = True
-            for remote in remotes:
-                name = remote.get("name", "origin")
-                url = remote.get("url", "")
-                branch = remote.get("push_branch", "master")
-                if url:
-                    self._run_git("remote", "add", name, url)
-                    self._run_git("remote", "set-url", name, url)
-                ok &= self._run_git("push", name, branch)
-                self._run_git("push", name, "--tags")
-            return ok
-
-        # Fallback to single 'origin'
-        result = subprocess.run(
-            ["git", "remote"],
-            cwd=self.repo_path,
-            capture_output=True,
-            text=True
-        )
-        if "origin" not in result.stdout:
-            return False
-        push_ok = self._run_git("push", "origin", "master")
-        if not push_ok:
-            return False
-        tags_ok = self._run_git("push", "origin", "--tags")
-        return tags_ok
+    def push_to_remote(self, remotes: List[dict]) -> bool:
+        """Push commits and tags to all configured remotes."""
+        ok = True
+        for remote in remotes:
+            name = remote.get("name", "origin")
+            url = remote.get("url", "")
+            branch = remote.get("push_branch", "master")
+            if url:
+                self._run_git("remote", "add", name, url)
+                self._run_git("remote", "set-url", name, url)
+            ok &= self._run_git("push", name, branch)
+            self._run_git("push", name, "--tags")
+        return ok

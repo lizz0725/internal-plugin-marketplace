@@ -7,10 +7,6 @@ const store = useAppStore()
 const route = useRoute()
 const router = useRouter()
 
-// Mock user for development (in production, this would come from SSO)
-const mockUserEmail = ref('developer@company.com')
-const mockUserName = ref('开发者')
-
 // Navigation items
 const navItems = [
   {
@@ -25,7 +21,6 @@ const adminNavItems = [
     path: '/admin/sync',
     label: '同步面板',
     icon: ['circle', { cx: 12, cy: 12, r: 10 }, ['polyline', { points: '12 6 12 12 16 14' }]],
-    badge: false
   },
   {
     path: '/admin/stats',
@@ -37,28 +32,12 @@ const adminNavItems = [
 const sidebarCollapsed = ref(false)
 const currentPath = computed(() => route.path)
 
-// Toggle admin mode for testing
-const toggleAdmin = () => {
-  store.setUser(mockUserEmail.value, mockUserName.value, !store.isAdmin)
-  if (store.isAdmin) {
-    store.fetchPendingCount()
-  }
-}
-
 onMounted(() => {
-  store.setUser(mockUserEmail.value, mockUserName.value, true)
   store.fetchStats()
-  store.fetchPendingCount()
 })
 
 const navigate = (path) => {
   router.push(path)
-}
-
-// Render SVG elements from our icon definitions
-const renderIcon = (def) => {
-  // This is handled in the template with v-for
-  return def
 }
 </script>
 
@@ -90,10 +69,6 @@ const renderIcon = (def) => {
           <span class="stat-value">{{ store.stats.plugins_count }}</span>
           <span class="stat-label">插件</span>
         </div>
-        <div class="stat-item">
-          <span class="stat-value">{{ store.stats.pending_reviews }}</span>
-          <span class="stat-label">待审核</span>
-        </div>
       </div>
 
       <!-- Navigation -->
@@ -110,24 +85,6 @@ const renderIcon = (def) => {
               <span class="nav-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon v-if="item.icon[0] === 'polygon'" :points="item.icon[1].points" />
-                  <template v-if="item.icon[0] === 'path'">
-                    <path :d="item.icon[1].d" />
-                    <path :d="item.icon[2][1].d" />
-                  </template>
-                  <template v-if="item.icon[0] === 'path' && item.icon[0] === 'path'">
-                    <path :d="item.icon[1].d" />
-                  </template>
-                  <path v-if="item.icon[0] === 'path'" :d="item.icon[1].d" />
-                  <template v-if="item.path === '/submit'">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                  </template>
-                  <template v-if="item.path === '/my-submissions'">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                  </template>
                   <template v-if="item.path === '/plugins'">
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                   </template>
@@ -150,10 +107,8 @@ const renderIcon = (def) => {
             >
               <span class="nav-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <template v-if="item.path === '/admin/reviews'">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </template>
+                  <circle v-if="item.path === '/admin/sync'" cx="12" cy="12" r="10" />
+                  <polyline v-if="item.path === '/admin/sync'" points="12 6 12 12 16 14" />
                   <template v-if="item.path === '/admin/stats'">
                     <line x1="12" y1="20" x2="12" y2="10" />
                     <line x1="18" y1="20" x2="18" y2="4" />
@@ -162,31 +117,16 @@ const renderIcon = (def) => {
                 </svg>
               </span>
               <span class="nav-label" v-if="!sidebarCollapsed">{{ item.label }}</span>
-              <span class="nav-badge" v-if="item.badge && store.pendingCount > 0">
-                {{ store.pendingCount }}
-              </span>
             </li>
           </ul>
         </div>
       </nav>
 
       <!-- User section -->
-      <div class="sidebar-footer">
-        <div class="user-info" v-if="!sidebarCollapsed">
-          <span class="user-name">{{ store.userName }}</span>
-          <span class="user-role" :class="{ admin: store.isAdmin }">
-            {{ store.isAdmin ? '管理员' : '用户' }}
-          </span>
+      <div class="sidebar-footer" v-if="!sidebarCollapsed">
+        <div class="user-info">
+          <span class="user-name">{{ store.userName || '用户' }}</span>
         </div>
-        <button class="admin-toggle" @click="toggleAdmin" :title="store.isAdmin ? '切换为用户' : '切换为管理员'">
-          <svg v-if="store.isAdmin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
-        </button>
       </div>
     </aside>
 
@@ -368,20 +308,6 @@ const renderIcon = (def) => {
   font-size: 14px;
 }
 
-.nav-badge {
-  background: var(--color-warning);
-  color: #1A1A1F;
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 6px;
-  border-radius: var(--radius-full);
-  margin-left: auto;
-  line-height: 1.2;
-  min-width: 18px;
-  text-align: center;
-}
-
 .sidebar-footer {
   padding: var(--space-3);
   border-top: 1px solid var(--color-border-subtle);
@@ -403,35 +329,6 @@ const renderIcon = (def) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.user-role {
-  font-size: 11px;
-  color: var(--color-text-dim);
-}
-
-.user-role.admin {
-  color: var(--color-primary);
-}
-
-.admin-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-  color: var(--color-text-muted);
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.admin-toggle:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
 }
 
 .main-content {
