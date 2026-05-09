@@ -1,13 +1,13 @@
 """Pydantic data models for the plugin marketplace."""
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, EmailStr
 
 
 class Author(BaseModel):
     """Plugin author information."""
     name: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
 
 
 class PluginMetadata(BaseModel):
@@ -50,33 +50,6 @@ class Plugin(BaseModel):
     versions: Optional[Versions] = None
 
 
-class SubmitterInfo(BaseModel):
-    """Plugin submission submitter information."""
-    name: str
-    email: EmailStr
-    department: Optional[str] = None
-    submitted_at: str
-    message: Optional[str] = None
-
-
-class ReviewStatus(BaseModel):
-    """Review status for a submission."""
-    submission_id: str
-    status: str = "pending"  # pending, approved, rejected
-    reviewed_by: Optional[EmailStr] = None
-    reviewed_at: Optional[str] = None
-    review_notes: Optional[str] = None
-
-
-class Submission(BaseModel):
-    """A plugin submission for review."""
-    submission_id: str
-    plugin: PluginMetadata
-    submitter: SubmitterInfo
-    review_status: ReviewStatus
-    auto_check_results: Optional[dict] = None
-
-
 class Rating(BaseModel):
     """User rating for a plugin."""
     user: EmailStr
@@ -100,13 +73,6 @@ class RatingSubmit(BaseModel):
     user_email: EmailStr
 
 
-class PluginSubmit(BaseModel):
-    """Request body for submitting a new plugin."""
-    plugin: PluginMetadata
-    submitter: SubmitterInfo
-    files: Optional[dict] = None  # 文件内容或路径
-
-
 class MarketplaceMeta(BaseModel):
     """Marketplace metadata."""
     name: str
@@ -116,3 +82,37 @@ class MarketplaceMeta(BaseModel):
     repository: Optional[str] = None
     created_at: str
     plugins_count: int = 0
+
+
+# ──────────────────────────────────────────
+# Models for upstream aggregation marketplace
+# ──────────────────────────────────────────
+
+class SourceInfo(BaseModel):
+    """Upstream source tracking for a plugin."""
+    type: Literal["manual", "github_single", "github_monorepo"]
+    repo_url: Optional[str] = None
+    repo_ref: Optional[str] = None
+    commit_sha: Optional[str] = None
+    subdir: Optional[str] = None
+    version: Optional[str] = None
+    last_sync_at: Optional[str] = None
+    last_sync_status: Optional[str] = None  # pending, success, failed, unchanged
+
+
+class SyncStatus(BaseModel):
+    """Sync status for all plugins."""
+    last_updated: Optional[str] = None
+    total_plugins: int = 0
+    synced: int = 0
+    pending: int = 0
+    failed: int = 0
+    plugins: List[dict] = []
+
+
+class PluginWithSource(Plugin):
+    """Plugin info with source tracking."""
+    source: Optional[SourceInfo] = None
+    stars: int = 0
+    homepage: Optional[str] = None
+    tags: List[str] = []

@@ -38,19 +38,26 @@ const handleClick = (index) => {
   }
 }
 
-const sizeClass = computed(() => `stars-${props.size}`)
+const starPath = 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'
 </script>
 
 <template>
-  <div class="rating-stars" :class="sizeClass">
-    <span
+  <div :class="['rating-stars', `stars-${size}`]">
+    <button
       v-for="(star, index) in stars"
       :key="index"
-      :class="['star', star, { interactive: interactive }]"
+      :class="['star', star, { interactive }]"
       @click="handleClick(index)"
+      :disabled="!interactive"
+      :aria-label="`${index + 1} 星`"
     >
-      {{ star === 'full' ? '★' : star === 'half' ? '½' : '☆' }}
-    </span>
+      <svg viewBox="0 0 24 24" :fill="star === 'empty' ? 'none' : 'currentColor'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path :d="starPath" />
+        <clipPath v-if="star === 'half'" :id="`half-${index}`">
+          <rect x="0" y="0" width="12" height="24" />
+        </clipPath>
+      </svg>
+    </button>
     <span class="rating-count" v-if="count > 0">({{ count }})</span>
   </div>
 </template>
@@ -62,21 +69,36 @@ const sizeClass = computed(() => `stars-${props.size}`)
   gap: 2px;
 }
 
-.stars-sm .star {
-  font-size: 14px;
-}
-
-.stars-md .star {
-  font-size: 16px;
-}
-
-.stars-lg .star {
-  font-size: 20px;
-}
-
 .star {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: all var(--transition-fast);
+}
+
+.star svg {
+  transition: all var(--transition-fast);
+}
+
+.stars-sm .star svg {
+  width: 14px;
+  height: 14px;
+}
+
+.stars-md .star svg {
+  width: 16px;
+  height: 16px;
+}
+
+.stars-lg .star svg {
+  width: 20px;
+  height: 20px;
+}
+
+.star.empty {
   color: var(--color-border);
-  transition: color var(--transition-fast);
 }
 
 .star.full {
@@ -85,7 +107,7 @@ const sizeClass = computed(() => `stars-${props.size}`)
 
 .star.half {
   color: var(--color-primary);
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .star.interactive {
@@ -94,6 +116,11 @@ const sizeClass = computed(() => `stars-${props.size}`)
 
 .star.interactive:hover {
   color: var(--color-primary-hover);
+  transform: scale(1.15);
+}
+
+.star.interactive:active {
+  transform: scale(0.95);
 }
 
 .rating-count {

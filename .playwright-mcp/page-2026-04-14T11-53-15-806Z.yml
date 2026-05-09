@@ -1,0 +1,77 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: 🔧
+        - generic [ref=e8]: 插件市场
+      - button "←" [ref=e9] [cursor=pointer]
+    - generic [ref=e10]:
+      - generic [ref=e11]: 0插件
+      - generic [ref=e12]: 1待审核
+    - navigation [ref=e13]:
+      - generic [ref=e14]:
+        - text: 导航
+        - list [ref=e15]:
+          - listitem [ref=e16] [cursor=pointer]:
+            - generic [ref=e17]: 📦
+            - generic [ref=e18]: 插件浏览
+          - listitem [ref=e19] [cursor=pointer]:
+            - generic [ref=e20]: ✨
+            - generic [ref=e21]: 提交插件
+          - listitem [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: 📋
+            - generic [ref=e24]: 我的提交
+      - generic [ref=e25]:
+        - text: 管理员
+        - list [ref=e26]:
+          - listitem [ref=e27] [cursor=pointer]:
+            - generic [ref=e28]: ⚖️
+            - generic [ref=e29]: 审核管理
+            - generic [ref=e30]: "1"
+          - listitem [ref=e31] [cursor=pointer]:
+            - generic [ref=e32]: 📊
+            - generic [ref=e33]: 统计分析
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]: 开发者
+        - generic [ref=e37]: 管理员
+      - button "👑" [ref=e38] [cursor=pointer]
+  - main [ref=e39]:
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - heading "⚖️ 审核管理" [level=1] [ref=e42]:
+          - generic [ref=e43]: ⚖️
+          - text: 审核管理
+        - paragraph [ref=e44]: 审核待提交的插件
+      - generic [ref=e45]:
+        - button "待审核 1" [ref=e46] [cursor=pointer]:
+          - text: 待审核
+          - generic [ref=e47]: "1"
+        - button "全部" [ref=e48] [cursor=pointer]
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - generic [ref=e52]:
+            - heading "hello-world" [level=3] [ref=e53]
+            - generic [ref=e54]: v1.0.0
+            - generic [ref=e55]:
+              - generic [ref=e56]: ⏳
+              - generic [ref=e57]: 待审核
+          - generic [ref=e58]: 2026-04-14-97374619
+        - generic [ref=e59]:
+          - paragraph [ref=e60]: 一个简单的测试插件，用于演示插件市场功能
+          - generic [ref=e61]:
+            - generic [ref=e62]: 开发者
+            - generic [ref=e63]: developer@company.com
+            - generic [ref=e64]: 测试团队
+          - generic [ref=e65]:
+            - generic [ref=e66]: test
+            - generic [ref=e67]: demo
+            - generic [ref=e68]: example
+          - generic [ref=e69]:
+            - text: "提交备注:"
+            - paragraph [ref=e70]: 这是一个测试插件，用于验证系统功能
+        - generic [ref=e71]:
+          - generic [ref=e72]: 提交于 2026/4/14
+          - generic [ref=e73]:
+            - button "✓ 通过" [ref=e74] [cursor=pointer]
+            - button "✕ 拒绝" [ref=e75] [cursor=pointer]

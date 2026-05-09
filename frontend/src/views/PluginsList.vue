@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getPlugins } from '../api'
 import PluginCard from '../components/PluginCard.vue'
 import SearchBar from '../components/SearchBar.vue'
@@ -42,17 +42,22 @@ onMounted(fetchPlugins)
   <div class="plugins-list-page">
     <!-- Page header -->
     <header class="page-header">
-      <div class="header-title">
+      <div class="header-left">
         <h1 class="title">
-          <span class="title-icon">📦</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
           插件浏览
         </h1>
         <p class="subtitle">浏览和安装企业内部 Claude Code 插件</p>
       </div>
       <div class="header-actions">
         <SearchBar v-model="searchQuery" placeholder="搜索插件名称、描述或关键词..." />
-        <router-link to="/submit" class="submit-link">
-          <span class="link-icon">✨</span>
+        <router-link to="/submit" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
           提交插件
         </router-link>
       </div>
@@ -61,32 +66,49 @@ onMounted(fetchPlugins)
     <!-- Loading state -->
     <div class="loading-state" v-if="loading">
       <div class="loading-spinner"></div>
-      <p>加载中...</p>
+      <p class="loading-text">加载中...</p>
     </div>
 
     <!-- Error state -->
-    <div class="error-state" v-if="error">
-      <span class="error-icon">⚠️</span>
+    <div class="state-card error-state" v-if="error">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="state-icon">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
       <p>{{ error }}</p>
-      <button class="btn btn-secondary" @click="fetchPlugins">重新加载</button>
+      <button class="btn btn-secondary" @click="fetchPlugins">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+          <polyline points="23 4 23 10 17 10" />
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </svg>
+        重新加载
+      </button>
     </div>
 
     <!-- Empty state -->
-    <div class="empty-state" v-if="!loading && !error && plugins.length === 0">
-      <div class="empty-content">
-        <span class="empty-icon">📭</span>
-        <h2>暂无插件</h2>
-        <p>目前没有上架的插件，点击上方按钮提交第一个插件吧！</p>
-        <router-link to="/submit" class="btn btn-primary">
-          提交插件
-        </router-link>
-      </div>
+    <div class="state-card empty-state" v-if="!loading && !error && plugins.length === 0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="state-icon">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+      </svg>
+      <h2>暂无插件</h2>
+      <p>目前没有上架的插件，点击上方按钮提交第一个插件吧！</p>
+      <router-link to="/submit" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+        提交插件
+      </router-link>
     </div>
 
     <!-- Search empty state -->
-    <div class="search-empty" v-if="!loading && plugins.length > 0 && filteredPlugins.length === 0">
-      <span class="search-icon">🔍</span>
-      <p>没有找到匹配 "{{ searchQuery }}" 的插件</p>
+    <div class="state-card search-empty" v-if="!loading && plugins.length > 0 && filteredPlugins.length === 0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="state-icon">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <p>没有找到匹配 "<strong>{{ searchQuery }}</strong>" 的插件</p>
       <button class="btn btn-secondary" @click="searchQuery = ''">清除搜索</button>
     </div>
 
@@ -116,119 +138,129 @@ onMounted(fetchPlugins)
   max-width: 1200px;
 }
 
+/* Header */
 .page-header {
-  margin-bottom: var(--space-xl);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+  gap: var(--space-6);
 }
 
-.header-title {
-  margin-bottom: var(--space-lg);
+.header-left {
+  flex-shrink: 0;
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 24px;
+  font-weight: 600;
   color: var(--color-text);
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .title-icon {
-  font-size: 28px;
+  width: 24px;
+  height: 24px;
+  color: var(--color-primary);
+  flex-shrink: 0;
 }
 
 .subtitle {
-  font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 14px;
   color: var(--color-text-muted);
-  margin-top: var(--space-xs);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-lg);
-}
-
-.submit-link {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--color-primary);
-  color: var(--color-bg);
-  font-family: var(--font-display);
-  font-size: 14px;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-}
-
-.submit-link:hover {
-  background: var(--color-primary-hover);
-  color: var(--color-bg);
-}
-
-.link-icon {
-  font-size: 14px;
+  gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 /* States */
-.loading-state,
-.error-state,
-.empty-state,
-.search-empty {
+.loading-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-2xl);
-  text-align: center;
+  padding: var(--space-16) var(--space-8);
 }
 
 .loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--color-border);
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--color-border);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
+  margin-bottom: var(--space-3);
+}
+
+.loading-text {
+  font-size: 13px;
+  color: var(--color-text-dim);
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-.error-icon,
-.empty-icon,
-.search-icon {
-  font-size: 48px;
-  margin-bottom: var(--space-md);
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-8);
+  text-align: center;
+  background: var(--color-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
 }
 
-.error-state p,
-.empty-state p,
-.search-empty p {
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-lg);
+.state-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-4);
 }
 
-.empty-content h2 {
+.state-card h2 {
   font-family: var(--font-display);
+  font-size: 18px;
   color: var(--color-text);
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-2);
+}
+
+.state-card p {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-5);
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+.error-state .state-icon {
+  color: var(--color-error);
 }
 
 /* Grid */
 .plugins-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: var(--space-lg);
+  gap: var(--space-4);
 }
 
 .results-info {
-  margin-top: var(--space-lg);
-  padding-top: var(--space-md);
+  margin-top: var(--space-5);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .results-info p {
@@ -238,6 +270,11 @@ onMounted(fetchPlugins)
 }
 
 @media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .header-actions {
     flex-direction: column;
     align-items: stretch;

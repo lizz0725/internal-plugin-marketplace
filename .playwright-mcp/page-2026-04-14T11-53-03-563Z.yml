@@ -1,0 +1,55 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: 🔧
+        - generic [ref=e8]: 插件市场
+      - button "←" [ref=e9] [cursor=pointer]
+    - generic [ref=e10]:
+      - generic [ref=e11]: 0插件
+      - generic [ref=e12]: 0待审核
+    - navigation [ref=e13]:
+      - generic [ref=e14]:
+        - text: 导航
+        - list [ref=e15]:
+          - listitem [ref=e16] [cursor=pointer]:
+            - generic [ref=e17]: 📦
+            - generic [ref=e18]: 插件浏览
+          - listitem [ref=e19] [cursor=pointer]:
+            - generic [ref=e20]: ✨
+            - generic [ref=e21]: 提交插件
+          - listitem [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: 📋
+            - generic [ref=e24]: 我的提交
+      - generic [ref=e25]:
+        - text: 管理员
+        - list [ref=e26]:
+          - listitem [ref=e27] [cursor=pointer]:
+            - generic [ref=e28]: ⚖️
+            - generic [ref=e29]: 审核管理
+          - listitem [ref=e30] [cursor=pointer]:
+            - generic [ref=e31]: 📊
+            - generic [ref=e32]: 统计分析
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]: 开发者
+        - generic [ref=e36]: 管理员
+      - button "👑" [ref=e37] [cursor=pointer]
+  - main [ref=e38]:
+    - generic [ref=e39]:
+      - generic [ref=e40]:
+        - heading "✨ 提交插件" [level=1] [ref=e41]:
+          - generic [ref=e42]: ✨
+          - text: 提交插件
+        - paragraph [ref=e43]: 提交你的插件到企业内部市场，等待管理员审核
+      - generic [ref=e82]:
+        - text: 🎉
+        - heading "提交成功！" [level=2] [ref=e83]
+        - paragraph [ref=e84]:
+          - text: "提交编号:"
+          - code [ref=e85]: 2026-04-14-97374619
+        - paragraph [ref=e86]: 你的插件已进入审核队列，审核通过后将在插件市场展示。
+        - generic [ref=e87]:
+          - button "提交新插件" [ref=e88] [cursor=pointer]
+          - link "查看我的提交" [ref=e89] [cursor=pointer]:
+            - /url: /my-submissions

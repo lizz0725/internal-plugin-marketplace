@@ -13,11 +13,10 @@ class Settings(BaseSettings):
     plugins_repo_path: Path = Path(os.getenv("PLUGINS_REPO_PATH", "../plugins-repo"))
 
     # Remote Git repository URL (for client installation)
-    # Example: https://github.com/username/cc-plugin-marketplace.git
     plugins_repo_url: str = ""
 
     # Marketplace name (displayed in frontend)
-    marketplace_name: str = "内部插件市场"
+    marketplace_name: str = "插件聚合市场"
 
     # Server settings
     host: str = "0.0.0.0"

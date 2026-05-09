@@ -29,35 +29,8 @@ export const getPlugin = (name) => {
   return api.get(`/plugins/${name}`)
 }
 
-export const submitPlugin = (data) => {
-  return api.post('/plugins/submit', data)
-}
-
 export const ratePlugin = (name, data) => {
   return api.post(`/plugins/${name}/rate`, data)
-}
-
-// Review APIs
-export const getPendingReviews = () => {
-  return api.get('/reviews/pending')
-}
-
-export const getAllSubmissions = () => {
-  return api.get('/reviews/all')
-}
-
-export const approveSubmission = (submissionId, reviewerEmail, notes = '') => {
-  return api.post(`/reviews/${submissionId}/approve`, {
-    reviewer_email: reviewerEmail,
-    notes: notes
-  })
-}
-
-export const rejectSubmission = (submissionId, reviewerEmail, reason) => {
-  return api.post(`/reviews/${submissionId}/reject`, {
-    reviewer_email: reviewerEmail,
-    reason: reason
-  })
 }
 
 // Stats APIs
@@ -67,6 +40,11 @@ export const getStatsOverview = () => {
 
 export const getRatingsStats = () => {
   return api.get('/stats/ratings')
+}
+
+// Sync APIs
+export const getSyncStatus = () => {
+  return api.get('/sync/status')
 }
 
 // Health check

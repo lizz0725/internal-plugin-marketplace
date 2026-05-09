@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiet Signals</title>
+<style>
+@font-face {
+  font-family: 'InstrumentSerif';
+  src: url('/Users/ray/.claude/plugins/cache/anthropic-agent-skills/document-skills/98669c11ca63/skills/canvas-design/canvas-fonts/InstrumentSerif-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'InstrumentSerif';
+  src: url('/Users/ray/.claude/plugins/cache/anthropic-agent-skills/document-skills/98669c11ca63/skills/canvas-design/canvas-fonts/InstrumentSerif-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'DMMono';
+  src: url('/Users/ray/.claude/plugins/cache/anthropic-agent-skills/document-skills/98669c11ca63/skills/canvas-design/canvas-fonts/DMMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #141210;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+canvas { display: block; width: 1200px; height: 1600px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="1600"></canvas>
+<script>
+(function() {
+  const c = document.getElementById('c'), cx = c.getContext('2d');
+  const W = 1200, H = 1600;
+
+  const A = '#C49B5E',  AD = '#A6834E',  AP = '#D4B88C';
+  const S = '#8A9BA8',  SD = '#6B7A88';
+  const WX = '#E8E4DF';
+  const BG = '#141210';
+
+  const π = Math.PI, rad = d => d * π / 180;
+
+  function ln(x1,y1,x2,y2,cl,lw,da) {
+    cx.save(); cx.strokeStyle=cl; cx.lineWidth=lw||1; if(da) cx.setLineDash(da);
+    cx.beginPath(); cx.moveTo(x1,y1); cx.lineTo(x2,y2); cx.stroke(); cx.restore();
+  }
+  function ar(cx1,cy1,r,s,e,cl,lw,da,al) {
+    cx.save(); cx.globalAlpha=al||1; cx.strokeStyle=cl; cx.lineWidth=lw||1;
+    if(da) cx.setLineDash(da); cx.beginPath(); cx.arc(cx1,cy1,r,s,e); cx.stroke(); cx.restore();
+  }
+  function dt(x,y,r,cl,al) {
+    cx.save(); cx.globalAlpha=al||1; cx.fillStyle=cl;
+    cx.beginPath(); cx.arc(x,y,r,0,π*2); cx.fill(); cx.restore();
+  }
+  function tx(str,x,y,fn,sz,cl,al,aln,bl) {
+    cx.save(); cx.globalAlpha=al||1; cx.fillStyle=cl||WX; cx.font=sz+'px '+fn;
+    cx.textAlign=aln||'left'; cx.textBaseline=bl||'middle'; cx.fillText(str,x,y); cx.restore();
+  }
+  function rx(x,y,w,h,cl,al) {
+    cx.save(); cx.globalAlpha=al||1; cx.fillStyle=cl; cx.fillRect(x,y,w,h); cx.restore();
+  }
+
+  // ── render ──
+  function render() {
+    // ── BG ──
+    rx(0,0,W,H,BG);
+
+    // warm glow from signal origin
+    const g1 = cx.createRadialGradient(240,620,10,240,620,720);
+    g1.addColorStop(0,'rgba(196,155,94,0.045)');
+    g1.addColorStop(0.4,'rgba(196,155,94,0.015)');
+    g1.addColorStop(1,'rgba(20,18,16,0)');
+    rx(0,0,W,H,g1);
+
+    // cool upper ambient
+    const g2 = cx.createRadialGradient(700,280,50,700,280,700);
+    g2.addColorStop(0,'rgba(138,155,168,0.012)');
+    g2.addColorStop(1,'rgba(20,18,16,0)');
+    rx(0,0,W,H,g2);
+
+    // ── reg marks ──
+    const m=36, al=28;
+    const reg=(x,y,dx,dy)=>{ cx.save(); cx.strokeStyle=WX; cx.globalAlpha=0.08; cx.lineWidth=0.4;
+      cx.beginPath(); cx.moveTo(x+dx*al,y); cx.lineTo(x,y); cx.lineTo(x,y+dy*al); cx.stroke(); cx.restore(); };
+    reg(m,m,1,1); reg(W-m,m,-1,1); reg(m,H-m,1,-1); reg(W-m,H-m,-1,-1);
+
+    // ── grid ──
+    cx.save(); cx.strokeStyle=WX; cx.globalAlpha=0.015; cx.lineWidth=0.25;
+    for(let x=0;x<=W;x+=80){ cx.beginPath(); cx.moveTo(x,0); cx.lineTo(x,H); cx.stroke(); }
+    for(let y=0;y<=H;y+=80){ cx.beginPath(); cx.moveTo(0,y); cx.lineTo(W,y); cx.stroke(); }
+    cx.restore();
+    cx.save(); cx.strokeStyle=WX; cx.globalAlpha=0.025; cx.lineWidth=0.35;
+    for(let x=0;x<=W;x+=320){ cx.beginPath(); cx.moveTo(x,0); cx.lineTo(x,H); cx.stroke(); }
+    for(let y=0;y<=H;y+=320){ cx.beginPath(); cx.moveTo(0,y); cx.lineTo(W,y); cx.stroke(); }
+    cx.restore();
+
+    // ── SIGNAL: concentric rings ──
+    const sx=230, sy=600;
+
+    // outer rings (45 total) — elegant decay
+    for(let i=45;i>=1;i--){
+      const r=10+i*16.2, t=1-(i/45);
+      const al=0.0015+t*t*0.04;
+      const lw=0.1+t*2.0;
+      let da=[];
+      if(i%5===0) da=[1.5,12];
+      else if(i%3===0) da=[3,9];
+      const cl=(i%7===0)?S:A;
+      ar(sx,sy,r,0,π*2,cl,lw,da,Math.min(al,0.10));
+    }
+
+    // core rings
+    [
+      [12,0.6,0.06],[22,1.8,0.18],[34,0.5,0.04],[48,2.2,0.28],
+      [58,0.4,0.03],[72,1.6,0.20],[85,0.3,0.02]
+    ].forEach(([r,lw,al])=>ar(sx,sy,r,0,π*2,A,lw,[],al));
+
+    // core center
+    dt(sx,sy,4,A,0.50); dt(sx,sy,1.8,AP,0.65); dt(sx,sy,7,A,0.06);
+
+    // ── radiating particles (3 trajectories) ──
+    const pts = [
+      [430,470,1.6,0.28],[540,432,1.2,0.20],[650,412,0.9,0.13],[760,405,0.6,0.08],[870,402,0.4,0.05],[980,405,0.3,0.03],
+      [415,540,2.0,0.35],[525,532,1.4,0.25],[635,535,1.0,0.17],[745,540,0.7,0.11],[855,545,0.5,0.07],[965,550,0.3,0.04],
+      [420,618,1.7,0.30],[530,635,1.2,0.22],[640,655,0.8,0.14],[750,670,0.5,0.09],[860,680,0.4,0.06],[970,685,0.3,0.03],
+      [400,700,1.3,0.20],[510,730,0.9,0.13],[620,755,0.6,0.08],[730,770,0.4,0.05],[840,780,0.3,0.04],
+    ];
+    pts.forEach(([x,y,r,a])=>dt(x,y,r,A,a));
+
+    // ── secondary source (interference) ──
+    const sx2=970, sy2=370;
+    for(let i=9;i>=1;i--){ const r=8+i*13; ar(sx2,sy2,r,rad(-35),rad(155),S,0.2+i/9*0.5,[2,12],0.005+i/9*0.015); }
+    dt(sx2,sy2,1.2,S,0.12);
+
+    // interference field between sources
+    cx.save(); cx.strokeStyle=A; cx.globalAlpha=0.008; cx.lineWidth=0.25;
+    for(let i=0;i<14;i++){
+      const t=i/13;
+      cx.beginPath();
+      cx.moveTo(sx+(sx2-sx)*t-35*Math.sin(t*9), sy+(sy2-sy)*t+25*Math.cos(t*6));
+      cx.lineTo(sx+(sx2-sx)*t+35*Math.sin(t*9+1), sy+(sy2-sy)*t-25*Math.cos(t*6+1));
+      cx.stroke();
+    }
+    cx.restore();
+
+    // ── measurement notation near signal ──
+    [
+      [310,520,'NE'],[370,458,'NE'],[195,498,'SE'],
+      [155,695,'NW'],[320,740,'SE']
+    ].forEach(([x,y,d])=>{
+      const dx=d==='NE'?9:d==='SE'?9:-9, dy=d==='NE'?-9:d==='SE'?9:d==='NW'?9:-9;
+      cx.save(); cx.strokeStyle=A; cx.globalAlpha=0.06; cx.lineWidth=0.3;
+      cx.beginPath(); cx.moveTo(x-dx,y-dy); cx.lineTo(x,y); cx.lineTo(x+dx,y+dy); cx.stroke(); cx.restore();
+    });
+    tx('+1.7',340,508,'DMMono',5,A,0.06,'left');
+    tx('−0.3',210,488,'DMMono',5,A,0.04,'right');
+
+    // ── MEASUREMENT BAND ──
+    const bY=1020, bL=140, bR=1060;
+    ln(bL,bY,bR,bY,A,0.5);
+
+    const tP=[0,4,9,14,19,24,29,34,39,44,49,54,59,64,69,74,79,84,89,94,100];
+    tP.forEach(p=>{
+      const tx=bL+(p/100)*(bR-bL);
+      const maj=p%25===0, mid=p%12.5===0;
+      const h=maj?20:mid?13:8, al=maj?0.45:mid?0.22:0.08, lw=maj?0.8:0.4;
+      ln(tx,bY-h,tx,bY+h,A,lw);
+      if(maj) dt(tx,bY,1.4,A,0.30);
+    });
+
+    [
+      [0,'0.00'],[25,'1.47'],[50,'2.83'],[75,'4.12'],[100,'5.00']
+    ].forEach(([p,l])=>{
+      const x=bL+(p/100)*(bR-bL);
+      tx(l,x,bY+34,'DMMono',6.5,A,0.28,'center');
+      tx(l,x,bY-30,'DMMono',4.5,A,0.08,'center');
+    });
+    tx('×10⁻³ Hz',bR+16,bY,'DMMono',5,A,0.10,'left');
+
+    // ── WAVEFORM TRACE ──
+    const wY=1190, wL=100, wR=1100;
+    cx.save();
+    cx.strokeStyle=AP; cx.globalAlpha=0.35; cx.lineWidth=0.6;
+    cx.beginPath();
+    for(let x=wL;x<=wR;x+=1.2){
+      const t=(x-wL)/(wR-wL);
+      const sig=Math.sin(t*29.3+0.7)*8 + Math.sin(t*54.7+2.3)*4 + Math.sin(t*11.2+0.5)*14 + Math.sin(t*6.8+4.5)*5;
+      const env=0.25+0.75*(1-Math.pow(t-0.5,2)*3.8);
+      const spk=Math.abs(Math.sin(t*87+2.1))<0.035?20*(1-Math.abs(Math.sin(t*87+2.1))/0.035):0;
+      cx.lineTo(x,wY+(sig*env+spk)*0.55);
+    }
+    cx.stroke();
+
+    // subtle fill
+    cx.lineTo(wR,wY+50); cx.lineTo(wL,wY+50); cx.closePath();
+    cx.fillStyle=A; cx.globalAlpha=0.012; cx.fill();
+    cx.restore();
+
+    ln(wL,wY,wR,wY,A,0.12,[2,10]);
+    ln(wL-14,wY-18,wL,wY-18,A,0.06,[1,4]);
+    ln(wL-14,wY+18,wL,wY+18,A,0.06,[1,4]);
+    tx('+20',wL-22,wY-18,'DMMono',4.5,A,0.06,'right');
+    tx('−20',wL-22,wY+18,'DMMono',4.5,A,0.06,'right');
+
+    // ── GEOMETRIC CLUSTERS ──
+    // parallel lines
+    const cl1x=480,cl1y=310;
+    for(let i=-1;i<=1;i++) ln(cl1x-9,cl1y+i*7,cl1x+9,cl1y+i*7,S,0.35);
+    tx('∥',cl1x+14,cl1y,'DMMono',5.5,S,0.08,'left');
+
+    // angle bracket
+    const cl2x=810,cl2y=280;
+    ln(cl2x-9,cl2y+9,cl2x,cl2y,S,0.35); ln(cl2x,cl2y,cl2x+9,cl2y+9,S,0.35);
+    dt(cl2x,cl2y,1.2,S,0.12);
+    tx('∠',cl2x+14,cl2y,'InstrumentSerif',8,S,0.08,'left');
+
+    // crosshair
+    const cl3x=870,cl3y=830;
+    ln(cl3x-13,cl3y,cl3x+13,cl3y,S,0.25,[1,4]); ln(cl3x,cl3y-13,cl3x,cl3y+13,S,0.25,[1,4]);
+    ar(cl3x,cl3y,3.5,0,π*2,S,0.25,[],0.06);
+
+    // triangle
+    cx.save(); cx.strokeStyle=S; cx.globalAlpha=0.06; cx.lineWidth=0.35;
+    cx.beginPath(); cx.moveTo(430,872); cx.lineTo(438,885); cx.lineTo(422,885); cx.closePath(); cx.stroke();
+    cx.restore();
+
+    // coordinate
+    ln(980,1038,980,1062,S,0.25); ln(968,1050,992,1050,S,0.25);
+    dt(980,1050,0.8,S,0.08);
+
+    // ── DIVISION ──
+    const dY=1380;
+    ln(100,dY,1100,dY,WX,0.15,[2,16,1,16]);
+    dt(600,dY,0.8,WX,0.06);
+
+    // ── TYPOGRAPHY ──
+
+    // upper label block
+    tx('FIG. 7',60,70,'DMMono',6.5,A,0.32,'left');
+    tx('SIGNAL PROPAGATION THROUGH AN IDEAL MEDIUM',60,86,'DMMono',5.5,A,0.15,'left');
+    tx('OBSERVER: STATION ALPHA  |  DURATION: 47.3 TU  |  BANDWIDTH: 0.4–6.2 kHz',60,100,'DMMono',4.5,A,0.07,'left');
+
+    // main word — anchor piece
+    tx('carrier',1060,1485,'InstrumentSerif',38,WX,0.48,'right');
+    tx('frequency  |  amplitude  0.00–5.00  |  phase  δ',1060,1522,'DMMono',6,A,0.22,'right');
+
+    // lower left
+    tx('a study of near-silent transmission',80,1478,'InstrumentSerif',10,WX,0.10,'left');
+    tx('QS  ·  2026',80,1503,'DMMono',5.5,A,0.10,'left');
+
+    // floating numerals (decorative)
+    tx('07',1080,600,'InstrumentSerif',90,WX,0.015,'center');
+    tx('47.3',1080,685,'InstrumentSerif',22,WX,0.03,'center');
+
+    // source label
+    tx('SOURCE α',sx+5,sy-215,'DMMono',4.5,A,0.08,'left');
+    tx('47.3°N · 122.3°W',sx+5,sy-203,'DMMono',4,A,0.04,'left');
+
+    // ── MOIRE (upper-right) ──
+    cx.save(); cx.strokeStyle=S; cx.globalAlpha=0.006; cx.lineWidth=0.15;
+    for(let i=0;i<50;i++){ const o=i*9; cx.beginPath(); cx.moveTo(W-280+o*0.15,60); cx.lineTo(W-100+o*0.15,380); cx.stroke(); }
+    cx.restore();
+
+    // ── SCALE BAR (right) ──
+    const sX=1100,sY1=210,sY2=510;
+    ln(sX,sY1,sX,sY2,A,0.25); ln(sX-3,sY1,sX+3,sY1,A,0.25); ln(sX-3,sY2,sX+3,sY2,A,0.25);
+    for(let y=sY1;y<=sY2;y+=25) ln(sX-2,y,sX+2,y,A,0.10);
+    tx('300',sX+7,sY1,'DMMono',4.5,A,0.10,'left');
+    tx('150',sX+7,(sY1+sY2)/2,'DMMono',4.5,A,0.06,'left');
+    tx('0',sX+7,sY2,'DMMono',4.5,A,0.10,'left');
+
+    // ── VIGNETTE ──
+    const vg=cx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.88);
+    vg.addColorStop(0,'rgba(20,18,16,0)');
+    vg.addColorStop(0.5,'rgba(20,18,16,0)');
+    vg.addColorStop(1,'rgba(6,5,4,0.50)');
+    rx(0,0,W,H,vg);
+  }
+
+  // draw on font load or timeout
+  let done=false;
+  const go=()=>{ if(!done){ done=true; render(); }};
+  document.fonts.ready.then(()=>{ setTimeout(go,150); });
+  setTimeout(go,2000);
+})();
+</script>
+</body>
+</html>

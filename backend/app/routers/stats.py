@@ -13,18 +13,28 @@ async def get_stats_overview():
 
     meta = reader.get_marketplace_meta()
     plugins = reader.get_all_plugins()
-    submissions = reader.get_pending_submissions()
+    sources = reader.get_sources()
 
-    pending_count = len([s for s in submissions if s.review_status.status == "pending"])
-
-    # Calculate total ratings
+    plugins_count = len(plugins)
     total_ratings = sum(p.total_ratings for p in plugins)
 
+    # Sync stats from sources.json
+    sync_stats = {"synced": 0, "pending": 0, "failed": 0}
+    if sources:
+        for entry in sources.get("plugins", []):
+            status = entry.get("source", {}).get("last_sync_status", "")
+            if status == "success":
+                sync_stats["synced"] += 1
+            elif status == "failed":
+                sync_stats["failed"] += 1
+            else:
+                sync_stats["pending"] += 1
+
     return {
-        "plugins_count": meta.plugins_count if meta else len(plugins),
-        "pending_reviews": pending_count,
+        "plugins_count": plugins_count,
         "total_ratings": total_ratings,
-        "marketplace_name": meta.display_name if meta else "Unknown"
+        "marketplace_name": meta.display_name if meta else "Plugin Marketplace",
+        "sync": sync_stats,
     }
 
 

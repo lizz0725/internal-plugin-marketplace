@@ -19,10 +19,7 @@ def client_with_repo():
 
     repo_path.mkdir()
     (repo_path / "plugins").mkdir()
-    (repo_path / "pending" / "submissions").mkdir(parents=True)
     (repo_path / "ratings").mkdir()
-    (repo_path / "reviews").mkdir()
-    (repo_path / "stats").mkdir()
 
     marketplace = {
         "name": "test-marketplace",
@@ -34,6 +31,18 @@ def client_with_repo():
     }
     with open(repo_path / "marketplace.json", "w") as f:
         json.dump(marketplace, f)
+
+    # Create a test plugin
+    plugin_dir = repo_path / "plugins" / "test-plugin" / ".claude-plugin"
+    plugin_dir.mkdir(parents=True)
+    plugin_json = {
+        "name": "test-plugin",
+        "description": "A test plugin",
+        "version": "1.0.0",
+        "author": {"name": "Test Author", "email": "author@test.com"}
+    }
+    with open(plugin_dir / "plugin.json", "w") as f:
+        json.dump(plugin_json, f)
 
     subprocess.run(["git", "init"], cwd=repo_path, check=True)
     subprocess.run(["git", "add", "-A"], cwd=repo_path, check=True)
@@ -52,61 +61,36 @@ def client_with_repo():
 class TestPluginsAPI:
     """Tests for plugins endpoints."""
 
-    def test_list_plugins_empty(self, client_with_repo):
-        """Test listing empty plugins."""
+    def test_list_plugins(self, client_with_repo):
+        """Test listing plugins."""
         response = client_with_repo.get("/api/plugins/")
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "test-plugin"
 
-    def test_submit_plugin(self, client_with_repo):
-        """Test submitting a plugin."""
-        payload = {
-            "plugin": {
-                "name": "test-plugin",
-                "description": "Test Description",
-                "version": "1.0.0",
-                "author": {"name": "Test Author", "email": "author@test.com"},
-                "keywords": ["test"]
-            },
-            "submitter": {
-                "name": "Submitter",
-                "email": "submitter@test.com",
-                "submitted_at": "2026-04-14T10:00:00Z",
-                "message": "Test submission"
-            }
-        }
-
-        response = client_with_repo.post("/api/plugins/submit", json=payload)
+    def test_get_plugin(self, client_with_repo):
+        """Test getting a specific plugin."""
+        response = client_with_repo.get("/api/plugins/test-plugin")
         assert response.status_code == 200
         data = response.json()
-        assert "submission_id" in data
-        assert data["status"] == "pending"
+        assert data["name"] == "test-plugin"
+        assert data["description"] == "A test plugin"
 
     def test_get_plugin_not_found(self, client_with_repo):
         """Test getting non-existent plugin."""
         response = client_with_repo.get("/api/plugins/nonexistent")
         assert response.status_code == 404
 
-    def test_submit_duplicate_plugin(self, client_with_repo):
-        """Test submitting duplicate plugin fails."""
-        payload = {
-            "plugin": {
-                "name": "duplicate-plugin",
-                "description": "Test Description",
-                "version": "1.0.0",
-                "author": {"name": "Test Author", "email": "author@test.com"}
-            },
-            "submitter": {
-                "name": "Submitter",
-                "email": "submitter@test.com",
-                "submitted_at": "2026-04-14T10:00:00Z"
-            }
-        }
+    def test_sync_status(self, client_with_repo):
+        """Test sync status endpoint."""
+        response = client_with_repo.get("/api/sync/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert "total_plugins" in data
 
-        # First submission should succeed
-        response1 = client_with_repo.post("/api/plugins/submit", json=payload)
-        assert response1.status_code == 200
-
-        # Second submission should fail
-        response2 = client_with_repo.post("/api/plugins/submit", json=payload)
-        assert response2.status_code == 400
+    def test_health(self, client_with_repo):
+        """Test health check."""
+        response = client_with_repo.get("/api/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy"}
