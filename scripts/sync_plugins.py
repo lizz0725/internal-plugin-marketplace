@@ -501,6 +501,184 @@ def sync_plugin(entry, force=False) -> bool:
     return True
 
 
+def sync_marketplace_plugin(entry, force=False) -> bool:
+    """Sync a plugin from a marketplace repo (e.g. anthropics/skills).
+
+    Handles github_marketplace source type where plugins are defined
+    inline in marketplace.json (no independent plugin.json).
+
+    Workflow:
+    1. Clone marketplace repo (sparse, two-phase)
+    2. Read marketplace.json, find the plugin by marketplace_plugin_name
+    3. Generate wrapper plugin.json from inline definition
+    4. Copy content files (skills, commands) from clone
+    5. Write source.json, update sources.json entry
+    """
+    source = entry.get("source", {})
+    repo_url = source.get("repo_url", "")
+    repo_ref = source.get("repo_ref", "main")
+    current_sha = source.get("commit_sha", "")
+    mp_plugin_name = source.get("marketplace_plugin_name", "")
+    name = entry["name"]
+
+    if not mp_plugin_name:
+        log(f"  FAILED: missing marketplace_plugin_name")
+        return False
+
+    # Check remote HEAD
+    new_sha = get_remote_head(repo_url, repo_ref)
+    if not new_sha:
+        log(f"  FAILED to get remote head")
+        return False
+
+    target_plugin_root = PLUGINS_REPO / "plugins" / name
+    target_metadata_dir = target_plugin_root / ".claude-plugin"
+    has_files = target_metadata_dir.exists() and (target_metadata_dir / "plugin.json").exists()
+
+    if new_sha == current_sha and has_files and not force:
+        source["last_sync_status"] = "unchanged"
+        log(f"  UNCHANGED ({new_sha[:12]})")
+        return False
+
+    log(f"  Updating: {current_sha[:12] if current_sha else 'none'} -> {new_sha[:12]}")
+
+    # Phase 1: sparse clone only .claude-plugin/ to read marketplace.json
+    clone_dir = TEMP_DIR / f"{name}_{int(time.time())}"
+    cloned = shallow_clone_ref_sparse(
+        repo_url, repo_ref, clone_dir, initial_paths=[".claude-plugin"],
+    )
+    if not cloned:
+        log(f"  Retrying with full shallow clone...")
+        cloned = shallow_clone_ref(repo_url, repo_ref, clone_dir)
+    if not cloned:
+        source["last_sync_status"] = "failed"
+        log(f"  FAILED: clone error")
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        return False
+
+    # Read marketplace.json to find the plugin definition
+    mp_json_path = clone_dir / ".claude-plugin" / "marketplace.json"
+    if not mp_json_path.exists():
+        log(f"  FAILED: marketplace.json not found in clone")
+        source["last_sync_status"] = "failed"
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        return False
+
+    try:
+        with open(mp_json_path) as f:
+            mp_data = json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        log(f"  FAILED: cannot read marketplace.json: {e}")
+        source["last_sync_status"] = "failed"
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        return False
+
+    # Find the plugin definition in marketplace
+    plugin_def = None
+    for p in mp_data.get("plugins", []):
+        if p.get("name") == mp_plugin_name:
+            plugin_def = p
+            break
+
+    if not plugin_def:
+        log(f"  FAILED: plugin '{mp_plugin_name}' not found in marketplace.json")
+        source["last_sync_status"] = "failed"
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        return False
+
+    # Phase 2: expand sparse checkout for content directories (skills, commands)
+    content_dirs = set()
+    for key in ("skills", "commands"):
+        paths = plugin_def.get(key, [])
+        if isinstance(paths, str):
+            paths = [paths]
+        for p in (paths or []):
+            top = p.strip("./").split("/")[0]
+            if top and top != ".":
+                content_dirs.add(top)
+
+    if content_dirs:
+        log(f"  Expanding sparse checkout: {', '.join(sorted(content_dirs))}")
+        r = subprocess.run(
+            ["git", "sparse-checkout", "add"] + sorted(content_dirs),
+            cwd=clone_dir, capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode == 0:
+            subprocess.run(
+                ["git", "checkout", "FETCH_HEAD"],
+                cwd=clone_dir, capture_output=True, text=True, timeout=120,
+            )
+
+    # Generate wrapper plugin.json from inline definition
+    wrapper_plugin = {
+        "name": plugin_def.get("name", name),
+        "description": plugin_def.get("description", entry.get("description", "")),
+        "author": mp_data.get("owner", {}),
+    }
+    for key in ("skills", "commands"):
+        val = plugin_def.get(key)
+        if val:
+            wrapper_plugin[key] = val
+
+    # Write target metadata directory
+    if target_metadata_dir.exists():
+        shutil.rmtree(target_metadata_dir)
+    target_metadata_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(target_metadata_dir / "plugin.json", "w") as f:
+        json.dump(wrapper_plugin, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+    # Clean stale content from previous syncs
+    if target_plugin_root.exists():
+        for item in list(target_plugin_root.iterdir()):
+            if item.name not in (".claude-plugin", "source.json"):
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+    else:
+        target_plugin_root.mkdir(parents=True, exist_ok=True)
+
+    # Copy content files from clone to target
+    source_content_root = clone_dir
+    content_paths = []
+    for key in ("skills", "commands"):
+        val = plugin_def.get(key, [])
+        if isinstance(val, str):
+            val = [val]
+        for p in (val or []):
+            p = p.strip().rstrip("/")
+            if _is_safe_relative_path(p, source_content_root):
+                content_paths.append(p)
+
+    if content_paths:
+        copied = copy_content_files(source_content_root, target_plugin_root, content_paths)
+        log(f"  Copied {len(copied)} content paths: {', '.join(copied)}")
+
+    # Write per-plugin source.json
+    write_source_file(target_metadata_dir, {
+        "name": name,
+        "source": {
+            "type": "github_marketplace",
+            "repo_url": repo_url,
+            "marketplace_plugin_name": mp_plugin_name,
+            "commit_sha": new_sha,
+            "last_sync_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
+        "installed_path": f"./plugins/{name}/.claude-plugin",
+    })
+
+    # Update sources.json entry
+    source["commit_sha"] = new_sha
+    source["last_sync_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    source["last_sync_status"] = "success"
+
+    log(f"  UPDATED ({new_sha[:12]})")
+    shutil.rmtree(clone_dir, ignore_errors=True)
+    return True
+
+
 def do_sync(sources_data, force=False, plugin_name=None):
     """Run the sync for all (or specified) plugins."""
     updated_count = 0
@@ -530,6 +708,15 @@ def do_sync(sources_data, force=False, plugin_name=None):
         try:
             if stype in ("github_single", "github_monorepo"):
                 if sync_plugin(entry, force=force):
+                    updated_count += 1
+                else:
+                    status = source.get("last_sync_status", "")
+                    if status == "failed":
+                        failed_count += 1
+                    else:
+                        unchanged_count += 1
+            elif stype == "github_marketplace":
+                if sync_marketplace_plugin(entry, force=force):
                     updated_count += 1
                 else:
                     status = source.get("last_sync_status", "")
