@@ -251,9 +251,16 @@ def _extract_content_paths(plugin_meta, source_content_root):
                 paths.add(p)
 
     # Convention-based directories (auto-discovered by Claude Code v2.1+)
-    for dirname in ("hooks", "agents", "rules"):
+    # Check even if not declared in plugin.json
+    for dirname in ("hooks", "agents", "rules", "skills", "commands"):
         if (source_content_root / dirname).is_dir():
             paths.add(dirname)
+
+    # Some plugins put hooks/rules under src/
+    if (source_content_root / "src" / "hooks").is_dir():
+        paths.add("src")
+    if (source_content_root / "src" / "rules").is_dir():
+        paths.add("src")
 
     # .mcp.json at plugin root (auto-discovered by convention)
     if (source_content_root / ".mcp.json").is_file():
@@ -402,6 +409,10 @@ def _get_content_top_level_dirs(clone_dir, subdir=None):
         top = p.strip("./").split("/")[0]
         if top and top != ".":
             top_level.add(top)
+    # Always include common convention-based directories (Claude Code v2.1+)
+    # These are auto-discovered even if not declared in plugin.json
+    for dirname in ("hooks", "agents", "rules", "skills", "commands", "src"):
+        top_level.add(dirname)
     return sorted(top_level)
 
 
