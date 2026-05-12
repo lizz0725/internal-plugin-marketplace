@@ -623,6 +623,7 @@ def sync_marketplace_plugin(entry, force=False) -> bool:
     # Generate wrapper plugin.json from inline definition
     wrapper_plugin = {
         "name": plugin_def.get("name", name),
+        "version": "1.0.0",
         "description": plugin_def.get("description", entry.get("description", "")),
         "author": mp_data.get("owner", {}),
     }
