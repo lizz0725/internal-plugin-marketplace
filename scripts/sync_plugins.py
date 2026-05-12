@@ -449,9 +449,17 @@ def sync_plugin(entry, force=False) -> bool:
 
     # Clone the repo (try sparse checkout first, fall back to full shallow clone)
     clone_dir = TEMP_DIR / f"{name}_{int(time.time())}"
+    # If subdir is set, include its top-level directory in initial sparse checkout
+    # so the plugin files inside subdir are available
+    if subdir:
+        subdir_top = subdir.split("/")[0]
+        initial_paths = [".claude-plugin", subdir_top]
+    else:
+        initial_paths = [".claude-plugin"]
+
     cloned = shallow_clone_ref_sparse(
         repo_url, repo_ref, clone_dir,
-        initial_paths=[".claude-plugin"],
+        initial_paths=initial_paths,
         expand_paths_fn=lambda d: _get_content_top_level_dirs(d, subdir),
     )
     if not cloned:
